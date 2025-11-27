@@ -8,9 +8,10 @@ import ujson
 import re
 import math
 from random import *
+import urequests
 
 #Device
-global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict
+global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData
 shuttingDown = False
 print("Starting...")
 
@@ -28,11 +29,13 @@ configData = {
 }
 
 def saveConfig():
+    global configData
     with open("configData.json", "w") as f:
         ujson.dump(configData, f)
     print("Config Data Saved.")
 
 def loadConfig():
+    global configData
     try:
         with open("configData.json", "r") as f:
             configData = ujson.load(f)
@@ -147,8 +150,8 @@ def ledWorker():
                 
 #Networking Section
  
-netSSID = "AAAAAA"
-netPassword = "AAAAAAA"
+netSSID = "AAAAA"
+netPassword = "AAAAAA"
 
 #Networking handling:
 netWlan = network.WLAN(network.STA_IF)
@@ -172,8 +175,8 @@ deviceIP = netInfo[0]
 print(f"Device IP: {deviceIP}")
     
 #Web Socket API handling
-def replyJson(client, data):
-    client.send('HTTP/1.1 200 OK\r\n')
+def replyJson(client, data, statusCode = 200):
+    client.send(f'HTTP/1.1 {statusCode} OK\r\n')
     client.send('Content-Type: text/json\r\n')
     client.send('Connection: close\r\n\r\n')
     client.sendall(ujson.dumps(data).encode())
@@ -182,7 +185,7 @@ def replyJson(client, data):
 def sCleanup(stringContent):
     return re.sub(r'[^A-Za-z0-9_]', '', stringContent)
 
-webAddr = (deviceIP, 80)
+webAddr = (deviceIP, 5000)
 webSocket = socket.socket()
 webSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 webSocket.bind(webAddr)
@@ -204,6 +207,7 @@ try:
         requestURL = str(requestParts[1]).replace("/", "").lower()
         paramsList = []
         paramLength = 0
+        
         if requestURL.count("?") != 0:
             paramSplit = requestURL.split("?")
             requestURL = paramSplit[0]
@@ -214,16 +218,20 @@ try:
       
         print(f"URL: {requestURL} Params: {paramsList}")
         if requestURL.count("ledon") != 0:
-            currentPattern = "default"
-            updateState()
-            data = {"Message" : "Started...", "CurrentPattern" : currentPattern }
-            replyJson(client, data)
+            if configData["mode"] == 2:
+                replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
+            else:
+                currentPattern = "default"
+                updateState()
+                replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
             
         elif requestURL.count("ledoff") != 0:
-            currentPattern = "off"
-            updateState()
-            data = {"Message" : "Started...", "CurrentPattern" : currentPattern }
-            replyJson(client, data)
+            if configData["mode"] == 2:
+                replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
+            else:
+                currentPattern = "off"
+                updateState()
+                replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
             
         elif requestURL.count("configstatus") != 0:
             data = {"Message" : "Config Data"}
@@ -231,43 +239,36 @@ try:
             replyJson(client, data)
             
         elif requestURL.count("status") != 0:
-            data = {"Message" : "My Status", "CurrentPattern" : currentPattern, "IP": webAddr, "WifiName" : netSSID, "LEDCount" : LEDCOUNT }
-            replyJson(client, data)
+            replyJson(client, {"Message" : "My Status", "CurrentPattern" : currentPattern, "IP": webAddr, "WifiName" : netSSID, "LEDCount" : LEDCOUNT })
             
         elif requestURL.count("configset") != 0:
             if paramLength <= 0 or paramLength >= 2:
-                data = {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }
-                replyJson(client, data)
+                replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
             else:
                 param = paramsList[0]
                 if param[0] in configData.keys():
                     valueType = type(configData[param[0]])
                     configData[param[0]] = valueType(param[1])
-                    data = {"Message" : "Updated Value", f"{param[0]}" : f"{param[1]}" }
-                    replyJson(client, data)
+                    replyJson(client, {"Message" : "Updated Value", f"{param[0]}" : f"{param[1]}" })
                     saveConfig()
                 else:
-                    data = {"Message" : "Error", "Error" : "The given name doesn't exist?" }
-                    replyJson(client, data)
+                    replyJson(client, {"Message" : "Error", "Error" : "The given name doesn't exist?" }, 500)
                     
         elif requestURL.count("slavelist") != 0:
             if paramLength <= 0 or paramLength >= 2:
-                data = {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }
-                replyJson(client, data)
+                replyJson(client,  {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
             else:
                 param = paramsList[0]
                 if param[0] == "add":
                     filterIP = param[1].replace("_", ".")
                     slaveList = configData["slave_nodes"]
                     if filterIP in slaveList:
-                        data = {"Message" : "Error", "Error" : "Can't add an already exist node / IP to the list." }
-                        replyJson(client, data)
+                        replyJson(client, {"Message" : "Error", "Error" : "Can't add an already exist node / IP to the list." }, 500)
                     else:
                         slaveList.append(filterIP)
                         configData["slave_nodes"] = slaveList
                         saveConfig()
-                        data = {"Message" : "Added new Node", "Node IP" : f"{filterIP}" }
-                        replyJson(client, data)
+                        replyJson(client, {"Message" : "Added new Node", "Node IP" : f"{filterIP}" })
                     
                 elif param[0] == "remove":
                     filterIP = param[1].replace("_", ".")
@@ -276,40 +277,72 @@ try:
                         slaveList.remove(filterIP)
                         configData["slave_nodes"] = slaveList
                         saveConfig()
-                        data = {"Message" : "Removed the requested Node", "Node IP" : f"{filterIP}" }
-                        replyJson(client, data)
+                        replyJson(client, {"Message" : "Removed the requested Node", "Node IP" : f"{filterIP}" })
                     else:
-                        data = {"Message" : "Error", "Error" : "Can't remove a node / IP thats no in the list." }
-                        replyJson(client, data)
+                        replyJson(client, {"Message" : "Error", "Error" : "Can't remove a node / IP thats no in the list." }, 500)
                     
                 else:
-                    data = {"Message" : "Error", "Error" : "Provided command is invalid? Use add to add new nodes or remove to remove a node from the list." }
-                    replyJson(client, data)
+                    replyJson(client, {"Message" : "Error", "Error" : "Provided command is invalid? Use add to add new nodes or remove to remove a node from the list." }, 500)
         
         elif requestURL.count("setmaster") != 0:
-            pass
+            if paramLength <= 0 or paramLength >= 2:
+                replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
+            else:
+                param = paramsList[0]
+                if param[0] == "hostname":
+                    filterIP = param[1].replace("_", ".")
+                    configData["master_to"] = filterIP
+                    saveConfig()
+                    replyJson(client, {"Message" : "Node master has been updated...", "IP" : f"{filterIP}", "Note" : "For this to truly work you must update the mode aswell." })
         
         elif requestURL.count("resetconfig") != 0:
-            pass
+            configData = {
+                "mode" : 0,
+                "slave_nodes" : [],
+                "master_to" : "",
+                "default_pattern" : "green_strips",
+            }
+            saveConfig()
+            replyJson(client, {"Message" : "Config completely reset."}) 
                     
         elif requestURL.count("mode") != 0:
             if paramLength <= 0 or paramLength >= 2:
-                data = {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }
-                replyJson(client, data)
+                replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
             else:
                 param = paramsList[0]
                 if param[0] == "pattern":
                     if param[1] in patternList:
                         currentPattern = param[1]
                         updateState()
-                        data = {"Message" : "Updated Mode", "CurrentPattern" : currentPattern }
-                        replyJson(client, data)
+                        
+                        if configData["mode"] == 1:
+                            slaveList = configData["slave_nodes"]
+                            if len(slaveList) <= 0:
+                                replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
+                            else:
+                                errorList = []
+                                
+                                for node in slaveList:
+                                    url = f"http://{node}:5000/mode?pattern={currentPattern}"
+                                    
+                                    try:
+                                        response = urequests.get(url)
+                                        if response.status_code == 500:
+                                            errorList.append(f"{node} ran into error {response.txt}")
+                                            continue
+                                        elif response.status_code == 200:
+                                            print("Node Updated Success.")
+                                        response.close()
+                                    except Exception as e:
+                                        print(f"Request failed: {e}")
+                                        
+                                replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
+                        else:
+                            replyJson(client, {"Message" : "Updated Mode", "CurrentPattern" : currentPattern })
                     else:
-                        data = {"Message" : "Error", "Error" : "Provided pattern isn't within the list?" }
-                        replyJson(client, data)
+                        replyJson(client, {"Message" : "Error", "Error" : "Provided pattern isn't within the list?" }, 500)
                 else:
-                    data = {"Message" : "Failed", "Error" : "Provided data name abnormally or incorrectly provided Ensure naming is correct." }
-                    replyJson(client, data)
+                    replyJson(client, {"Message" : "Failed", "Error" : "Provided data name abnormally or incorrectly provided Ensure naming is correct." }, 500)
                     
         elif requestURL.count("shutdown") != 0:
             print("Shutting down.")
