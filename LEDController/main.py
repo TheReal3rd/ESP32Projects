@@ -14,6 +14,14 @@ import urequests
 global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData
 shuttingDown = False
 print("Starting...")
+#Software information
+VERSION = "1.0"
+CREDITS = "TheReal3rd"
+
+#Self Updating Section
+#TODO Think of and create a self updating and replicating solution.
+#Like Update one nodes python code it creates a back up of old code then downloads new code to then reboot into it.
+#If it fails fallback to backup. Maybe.
 
 #Saved Configuration Section
 #Modes:
@@ -26,7 +34,9 @@ configData = {
     "slave_nodes" : [],
     "master_to" : "",
     "default_pattern" : "green_strips",
+    "on_boot_distribute" : True
 }
+configDefaults = configData
 
 def saveConfig():
     global configData
@@ -104,7 +114,8 @@ def ledWorker():
         cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
         counter = 0
         blank = False
-        for i in range(LEDCOUNT):
+        fromPix = randint(0, int(LEDCOUNT / 2))
+        for i in range(fromPix, randint(fromPix, LEDCOUNT)):
             pix[i] = cColour
             if counter == 0:
                 if blank:
@@ -113,16 +124,18 @@ def ledWorker():
                 else:
                     cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
                     blank = True
-                counter = randint(3, 20)
+                counter = randint(5, 30)
             counter -= 1
             pix.write()
     
     neoPix = neopixel.NeoPixel(ledPin, LEDCOUNT)
     applyColour(neoPix, False)
 
-    sleep(1)
+    sleep(0.5)
     applyColour(neoPix, False, (255, 255, 255))
-    sleep(1)
+    sleep(0.5)
+    applyColour(neoPix, False, (0, 0, 0))
+    sleep(0.5)
     
     hue_offset = 0
     hue_step_per_led = 1536 // LEDCOUNT        
@@ -143,15 +156,15 @@ def ledWorker():
         elif currentPattern == "random_strips":
             randomStrips(neoPix, True)
         elif currentPattern == "green_strips":
-            randomStrips(neoPix, False, blankColour = (0, 10, 0))
+            randomStrips(neoPix, False, blankColour = (0, 50, 0))
         elif currentPattern == "black_and_white":
             randomStrips(neoPix, False, (255, 255, 255))
         sleep(0.1)
-                
+
+print(f"ESP32 LED Controller : Version: {VERSION} Credits: {CREDITS}")
 #Networking Section
- 
-netSSID = "AAAAA"
-netPassword = "AAAAAA"
+netSSID = "AAAA"
+netPassword = "AAAAA"
 
 #Networking handling:
 netWlan = network.WLAN(network.STA_IF)
@@ -176,14 +189,37 @@ print(f"Device IP: {deviceIP}")
     
 #Web Socket API handling
 def replyJson(client, data, statusCode = 200):
-    client.send(f'HTTP/1.1 {statusCode} OK\r\n')
-    client.send('Content-Type: text/json\r\n')
-    client.send('Connection: close\r\n\r\n')
-    client.sendall(ujson.dumps(data).encode())
+    body = ujson.dumps(data).encode()
+    client.sendall(f'HTTP/1.1 {statusCode} OK\r\n'.encode())
+    client.sendall(b'Content-Type: application/json\r\n')
+    client.sendall(b'Connection: close\r\n')
+    client.sendall(f'Content-Length: {len(body)}\r\n\r\n'.encode())
+    client.sendall(body)
     client.close()
     
 def sCleanup(stringContent):
     return re.sub(r'[^A-Za-z0-9_]', '', stringContent)
+
+def distributeModeUpdate(slaveList):
+    errorList = []
+                                
+    for node in slaveList:
+        url = f"http://{node}:5000/mode?pattern={currentPattern}"
+                                    
+        try:
+            response = urequests.get(url)
+            if response.status_code == 500:
+                errorList.append(f"{node} ran into error {response.txt}")
+                continue
+            
+            elif response.status_code == 200:
+                print("Node Updated Success.")
+                
+            response.close()
+        except Exception as e:
+            print(f"Request failed: {e}")
+            
+    return errorList
 
 webAddr = (deviceIP, 5000)
 webSocket = socket.socket()
@@ -193,10 +229,18 @@ webSocket.listen(1)
 
 loadConfig()
 updateState()
+saveConfig()
 
 print(f"Socket Started on: {webAddr}")
 print("Now Starting LED thread...")
 _thread.start_new_thread(ledWorker, ())
+
+if configData["on_boot_distribute"]:
+    slaveList = configData["slave_nodes"]
+    if not len(slaveList) <= 0:
+        errorList = distributeModeUpdate(slaveList)
+    if len(errorList) != 0:
+        print(f"On boot distribute : {errorList}")
 
 try:
     while not shuttingDown:
@@ -216,9 +260,9 @@ try:
                 paramsList.append( ( sCleanup(str(valueSplit[0].lower())), sCleanup(str(valueSplit[1].lower()))) )
             paramLength = len(paramsList)
       
-        print(f"URL: {requestURL} Params: {paramsList}")
+        print(f"URL: {requestURL} Params: {paramsList} IP: {clientAddr[0]}")
         if requestURL.count("ledon") != 0:
-            if configData["mode"] == 2:
+            if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
                 replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
             else:
                 currentPattern = "default"
@@ -226,7 +270,7 @@ try:
                 replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
             
         elif requestURL.count("ledoff") != 0:
-            if configData["mode"] == 2:
+            if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
                 replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
             else:
                 currentPattern = "off"
@@ -280,7 +324,6 @@ try:
                         replyJson(client, {"Message" : "Removed the requested Node", "Node IP" : f"{filterIP}" })
                     else:
                         replyJson(client, {"Message" : "Error", "Error" : "Can't remove a node / IP thats no in the list." }, 500)
-                    
                 else:
                     replyJson(client, {"Message" : "Error", "Error" : "Provided command is invalid? Use add to add new nodes or remove to remove a node from the list." }, 500)
         
@@ -296,16 +339,16 @@ try:
                     replyJson(client, {"Message" : "Node master has been updated...", "IP" : f"{filterIP}", "Note" : "For this to truly work you must update the mode aswell." })
         
         elif requestURL.count("resetconfig") != 0:
-            configData = {
-                "mode" : 0,
-                "slave_nodes" : [],
-                "master_to" : "",
-                "default_pattern" : "green_strips",
-            }
+            configData = configDefaults
             saveConfig()
             replyJson(client, {"Message" : "Config completely reset."}) 
                     
         elif requestURL.count("mode") != 0:
+            masterNodeIP = configData["master_to"]
+            if configData["mode"] == 2 and not clientAddr[0] == masterNodeIP:
+                replyJson(client, {"Message" : "Error", "Error" : "Node is set in slave mode send commands to the master node.", "MasterNodeIP" : masterNodeIP }, 500)
+                continue
+            
             if paramLength <= 0 or paramLength >= 2:
                 replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
             else:
@@ -320,21 +363,7 @@ try:
                             if len(slaveList) <= 0:
                                 replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
                             else:
-                                errorList = []
-                                
-                                for node in slaveList:
-                                    url = f"http://{node}:5000/mode?pattern={currentPattern}"
-                                    
-                                    try:
-                                        response = urequests.get(url)
-                                        if response.status_code == 500:
-                                            errorList.append(f"{node} ran into error {response.txt}")
-                                            continue
-                                        elif response.status_code == 200:
-                                            print("Node Updated Success.")
-                                        response.close()
-                                    except Exception as e:
-                                        print(f"Request failed: {e}")
+                                errorList = distributeModeUpdate(slaveList)
                                         
                                 replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
                         else:
