@@ -235,7 +235,7 @@ print(f"Socket Started on: {webAddr}")
 print("Now Starting LED thread...")
 _thread.start_new_thread(ledWorker, ())
 
-if configData["on_boot_distribute"]:
+if configData["mode"] == 1 and configData["on_boot_distribute"]:
     slaveList = configData["slave_nodes"]
     if not len(slaveList) <= 0:
         errorList = distributeModeUpdate(slaveList)
