@@ -1,27 +1,101 @@
-from machine import Pin
+from machine import Pin, reset
+from gc import collect, mem_free
+from random import randint, choice
+from time import sleep, time
+
 import neopixel
 import network
-from time import *
 import socket
 import _thread
-import ujson
-import re
-import math
-from random import *
-import urequests
 
 #Device
-global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData
+global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData, GITURL, VERSION
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.0"
+VERSION = "1.1"
 CREDITS = "TheReal3rd"
+GITURL = "https://raw.githubusercontent.com/TheReal3rd/ESP32Projects/refs/heads/main/LEDController/{fileName}"
+FILES_DICT = {
+    "ver" : "version.json",
+    "main" : "main.py"
+}
 
 #Self Updating Section
-#TODO Think of and create a self updating and replicating solution.
-#Like Update one nodes python code it creates a back up of old code then downloads new code to then reboot into it.
-#If it fails fallback to backup. Maybe.
+#TODO add the fall back.
+#This can be done by changing main.py to be a starting section then the controller.py being the actual code.
+#Attempt to start the controller script from main. if it fails check if there is a backup if so read backup and overwrite the main.py
+
+def checkForUpdates(forceDownload=False):
+    import urequests
+    import ujson
+    global GITURL
+    doUpdate = False
+    try:
+        url = GITURL.format(fileName = FILES_DICT["ver"])
+        print(url)
+        response = urequests.get(url)
+        
+        if response.status_code == 200:
+            print("Successfully fetch update information.")
+            responseDict = ujson.loads(response.text)
+            
+            if responseDict["Version"] != VERSION:
+                print("Update is needed.")
+                if configData["auto_update"]:
+                    doUpdate = True
+            else:
+                print("No updates are needed.")
+        else:
+            print("Failed to fetch update information.")
+                
+        response.close()
+    except Exception as e:
+        print(f"Check Update Request failed: {e}")
+        
+    if doUpdate or forceDownload:
+        downloadUpdates()
+
+def downloadUpdates():
+    import urequests
+    print("Started Updates...")
+    
+    backupCode = None
+    with open("main.py", "r") as f:
+        backupCode = f.read()
+    
+    if backupCode:
+        with open("main.py.bak", "w") as f:
+            f.write(backupCode)
+    
+    print("Finished Update...")
+    sleep(1)
+    print("Freeing up memory.")
+    collect()
+    print(f"Currently avaible memory: {mem_free()}")
+    sleep(1)
+    
+    print("Starting download.")
+    try:
+        url = "http://ghproxy.net/" + GITURL.format(fileName = FILES_DICT["main"])
+        print(url)
+        response = urequests.get(url)
+        
+        print(response.status_code)
+        
+        if response.status_code == 200:
+            print("Downloaded update...")
+            with open("main.py", "w") as f:
+                f.write(response.text)
+                
+            print("Finished Restarting...")
+            reset()
+        else:
+            print("Failed to fetch update information.")
+                
+        response.close()
+    except Exception as e:
+        print(f"Update download request failed: {e}")
 
 #Saved Configuration Section
 #Modes:
@@ -34,17 +108,21 @@ configData = {
     "slave_nodes" : [],
     "master_to" : "",
     "default_pattern" : "green_strips",
-    "on_boot_distribute" : True
+    "on_boot_distribute" : True,
+    "auto_update" : True,
+    "auto_update_check" : True
 }
 configDefaults = configData
 
 def saveConfig():
+    import ujson
     global configData
     with open("configData.json", "w") as f:
         ujson.dump(configData, f)
     print("Config Data Saved.")
 
 def loadConfig():
+    import ujson
     global configData
     try:
         with open("configData.json", "r") as f:
@@ -88,20 +166,22 @@ fixedColourDict = {
     "dark_green" : (0, 100, 0)
 }
 
-def hsv_to_rgb_int(h):#AI
-    h %= 1536
-    segment = h >> 8
-    offset  = h & 0xFF 
-    if segment == 0:  r, g, b = 255, offset, 0
-    elif segment == 1: r, g, b = 255 - offset, 255, 0
-    elif segment == 2: r, g, b = 0, 255, offset
-    elif segment == 3: r, g, b = 0, 255 - offset, 255
-    elif segment == 4: r, g, b = offset, 0, 255
-    else:              r, g, b = 255, 0, 255 - offset
-    return r, g, b
 
 def ledWorker():
     global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict
+    
+    def hsv_to_rgb_int(h):#AI
+        h %= 1536
+        segment = h >> 8
+        offset  = h & 0xFF 
+        if segment == 0:  r, g, b = 255, offset, 0
+        elif segment == 1: r, g, b = 255 - offset, 255, 0
+        elif segment == 2: r, g, b = 0, 255, offset
+        elif segment == 3: r, g, b = 0, 255 - offset, 255
+        elif segment == 4: r, g, b = offset, 0, 255
+        else:              r, g, b = 255, 0, 255 - offset
+        return r, g, b
+    
     def applyColour(pix, updateWithLoop, colour = (0,0,0)):
         for i in range(LEDCOUNT):
             pix[i] = colour
@@ -114,6 +194,7 @@ def ledWorker():
         cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
         counter = 0
         blank = False
+        direction = choice([True, False])
         fromPix = randint(0, int(LEDCOUNT / 2))
         for i in range(fromPix, randint(fromPix, LEDCOUNT)):
             pix[i] = cColour
@@ -156,15 +237,15 @@ def ledWorker():
         elif currentPattern == "random_strips":
             randomStrips(neoPix, True)
         elif currentPattern == "green_strips":
-            randomStrips(neoPix, False, blankColour = (0, 50, 0))
+            randomStrips(neoPix, False, blankColour = (23, 44, 13))
         elif currentPattern == "black_and_white":
             randomStrips(neoPix, False, (255, 255, 255))
         sleep(0.1)
 
 print(f"ESP32 LED Controller : Version: {VERSION} Credits: {CREDITS}")
 #Networking Section
-netSSID = "AAAA"
-netPassword = "AAAAA"
+netSSID = "AAAAAA"
+netPassword = "AAAAAAA"
 
 #Networking handling:
 netWlan = network.WLAN(network.STA_IF)
@@ -189,6 +270,7 @@ print(f"Device IP: {deviceIP}")
     
 #Web Socket API handling
 def replyJson(client, data, statusCode = 200):
+    import ujson
     body = ujson.dumps(data).encode()
     client.sendall(f'HTTP/1.1 {statusCode} OK\r\n'.encode())
     client.sendall(b'Content-Type: application/json\r\n')
@@ -198,9 +280,11 @@ def replyJson(client, data, statusCode = 200):
     client.close()
     
 def sCleanup(stringContent):
+    import re
     return re.sub(r'[^A-Za-z0-9_]', '', stringContent)
 
 def distributeModeUpdate(slaveList):
+    import urequests
     errorList = []
                                 
     for node in slaveList:
@@ -209,7 +293,7 @@ def distributeModeUpdate(slaveList):
         try:
             response = urequests.get(url)
             if response.status_code == 500:
-                errorList.append(f"{node} ran into error {response.txt}")
+                errorList.append(f"{node} ran into error {response.text}")
                 continue
             
             elif response.status_code == 200:
@@ -221,15 +305,18 @@ def distributeModeUpdate(slaveList):
             
     return errorList
 
+loadConfig()
+updateState()
+saveConfig()
+
+if configData["auto_update_check"]:
+    checkForUpdates()
+
 webAddr = (deviceIP, 5000)
 webSocket = socket.socket()
 webSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 webSocket.bind(webAddr)
 webSocket.listen(1)
-
-loadConfig()
-updateState()
-saveConfig()
 
 print(f"Socket Started on: {webAddr}")
 print("Now Starting LED thread...")
@@ -261,6 +348,14 @@ try:
             paramLength = len(paramsList)
       
         print(f"URL: {requestURL} Params: {paramsList} IP: {clientAddr[0]}")
+        
+        if requestURL.count("updatesoftware") != 0:
+            if paramLength == 0:
+                replyJson(client, {"Message" : "Checking for updates now."})
+                checkForUpdates(True)
+            else:
+                replyJson(client, {"Error" : "Parameter provided for a command that doesn't take any?"})
+        
         if requestURL.count("ledon") != 0:
             if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
                 replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
@@ -283,7 +378,15 @@ try:
             replyJson(client, data)
             
         elif requestURL.count("status") != 0:
-            replyJson(client, {"Message" : "My Status", "CurrentPattern" : currentPattern, "IP": webAddr, "WifiName" : netSSID, "LEDCount" : LEDCOUNT })
+            replyJson(client,
+                      {
+                          "Message" : "My Status",
+                          "CurrentPattern" : currentPattern,
+                          "IP": webAddr,
+                          "WifiName" : netSSID,
+                          "LEDCount" : LEDCOUNT,
+                          "Version" : VERSION
+                          })
             
         elif requestURL.count("configset") != 0:
             if paramLength <= 0 or paramLength >= 2:
@@ -388,3 +491,4 @@ finally:
     webSocket.close()
             
 print("Bye.")
+
