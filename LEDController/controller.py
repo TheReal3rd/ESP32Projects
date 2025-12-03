@@ -106,7 +106,9 @@ configData = {
     "default_pattern" : "green_strips",
     "on_boot_distribute" : True,
     "auto_update" : True,
-    "auto_update_check" : True
+    "auto_update_check" : True,
+    "net_ssid" : "",
+    "net_password" : ""
 }
 configDefaults = configData
 
@@ -122,7 +124,10 @@ def loadConfig():
     global configData
     try:
         with open("configData.json", "r") as f:
-            configData = ujson.load(f)
+            fileData = ujson.load(f)
+
+        for key, value in fileData.items():
+            configData[key] = value
         print("Config Data Loaded.")
     except OSError:
         print("Config doesn't exist.")
@@ -233,15 +238,15 @@ def ledWorker():
         elif currentPattern == "random_strips":
             randomStrips(neoPix, True)
         elif currentPattern == "green_strips":
-            randomStrips(neoPix, False, blankColour = (23, 44, 13))
+            randomStrips(neoPix, False, blankColour = (0, 0, 0))
         elif currentPattern == "black_and_white":
             randomStrips(neoPix, False, (255, 255, 255))
         sleep(0.1)
 
 print(f"ESP32 LED Controller : Version: {VERSION} Credits: {CREDITS}")
 #Networking Section
-netSSID = "VM3613905"
-netPassword = "f3tdKkspwfyt"
+netSSID = configData["net_ssid"]
+netPassword = configData["net_password"]
 
 #Networking handling:
 netWlan = network.WLAN(network.STA_IF)
