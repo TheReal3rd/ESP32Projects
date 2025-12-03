@@ -13,7 +13,7 @@ global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configDa
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.2"
+VERSION = "1.3"
 CREDITS = "TheReal3rd"
 GITURL = "http://ghproxy.net/https://raw.githubusercontent.com/TheReal3rd/ESP32Projects/refs/heads/main/LEDController/{fileName}"
 FILES_DICT = {
@@ -155,7 +155,9 @@ patternList = [
     "blue",
     "white",
     "dark_green",
-    "green_strips"
+    "green_strips",
+    "purple",
+    "violet"
 ]
 
 fixedColourDict = {
@@ -164,7 +166,9 @@ fixedColourDict = {
     "green" : (0, 255, 0),
     "blue" : (0, 0, 255),
     "white" : (255, 255, 255),
-    "dark_green" : (0, 100, 0)
+    "dark_green" : (0, 100, 0),
+    "purple" : (255, 0, 255),
+    "violet" : (148,0,211)
 }
 
 
@@ -356,6 +360,9 @@ try:
                 checkForUpdates(True)
             else:
                 replyJson(client, {"Error" : "Parameter provided for a command that doesn't take any?"})
+
+        elif requestURL.count("listpatterns") != 0:
+            replyJson(client, {"Message" : "Here are all the available patterns.", "Patterns" : patternList})
         
         elif requestURL.count("ledon") != 0:
             if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
@@ -492,3 +499,4 @@ finally:
     webSocket.close()
             
 print("Bye.")
+
