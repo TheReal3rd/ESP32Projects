@@ -13,7 +13,7 @@ global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configDa
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.1"
+VERSION = "1.2"
 CREDITS = "TheReal3rd"
 GITURL = "http://ghproxy.net/https://raw.githubusercontent.com/TheReal3rd/ESP32Projects/refs/heads/main/LEDController/{fileName}"
 FILES_DICT = {
@@ -243,6 +243,10 @@ def ledWorker():
             randomStrips(neoPix, False, (255, 255, 255))
         sleep(0.1)
 
+loadConfig()
+updateState()
+saveConfig()
+
 print(f"ESP32 LED Controller : Version: {VERSION} Credits: {CREDITS}")
 #Networking Section
 netSSID = configData["net_ssid"]
@@ -305,10 +309,6 @@ def distributeModeUpdate(slaveList):
             print(f"Request failed: {e}")
             
     return errorList
-
-loadConfig()
-updateState()
-saveConfig()
 
 if configData["auto_update_check"]:
     checkForUpdates()
