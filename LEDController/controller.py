@@ -13,9 +13,9 @@ global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configDa
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.3"
+VERSION = "1.4"
 CREDITS = "TheReal3rd"
-GITURL = "http://ghproxy.net/https://raw.githubusercontent.com/TheReal3rd/ESP32Projects/refs/heads/main/LEDController/{fileName}"
+GITURL = "http://51.158.144.14/files/ledController/{fileName}"
 FILES_DICT = {
     "ver" : "version.json",
     "controller" : "controller.py"
@@ -65,11 +65,11 @@ def downloadUpdates():
             f.write(backupCode)
     
     print("Finished Update...")
-    sleep(1)
+    sleep(0.5)
     print("Freeing up memory.")
     collect()
     print(f"Currently avaible memory: {mem_free()}")
-    sleep(1)
+    sleep(0.5)
     
     print("Starting download.")
     try:
@@ -157,7 +157,11 @@ patternList = [
     "dark_green",
     "green_strips",
     "purple",
-    "violet"
+    "violet",
+    "yellow",
+    "orange",
+    "cyan",
+    "green_pong"
 ]
 
 fixedColourDict = {
@@ -168,13 +172,20 @@ fixedColourDict = {
     "white" : (255, 255, 255),
     "dark_green" : (0, 100, 0),
     "purple" : (255, 0, 255),
-    "violet" : (148,0,211)
+    "violet" : (148,0,211),
+    "yellow" : (255, 226, 0),
+    "orange" : (255, 145, 0),
+    "cyan" : (0, 255, 255)
 }
 
 
 def ledWorker():
     global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict
     
+    pongPos = 0
+    pongWidth = 15
+    pongDirection = True
+
     def hsv_to_rgb_int(h):#AI
         h %= 1536
         segment = h >> 8
@@ -210,9 +221,38 @@ def ledWorker():
                 else:
                     cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
                     blank = True
-                counter = randint(5, 30)
-            counter -= 1
+                
+                if direction:
+                    counter = randint(5, 30)
+                else:
+                    counter = randint(-5, -30)
+                
+            if direction:
+                counter -= 1
+            else:
+                counter += 1
             pix.write()
+
+    def pong(pix, random=False, colour = (0, 255, 0), blankColour = (0,0,0)):
+        cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
+        
+        for i in range(0, LEDCOUNT):
+            if i in range(pongPos, pongWidth):            
+                pix[i] = cColour
+            else:
+                pix[i] = blankColour
+        
+        if pongDirection:
+            pongPos += 1
+            if pongPos >= LEDCOUNT:
+                pongDirection = True
+        else:
+            pongPos -= 1
+            if pongPos <= 0:
+                pongDirection = False
+
+        pix.write()
+        
     
     neoPix = neopixel.NeoPixel(ledPin, LEDCOUNT)
     applyColour(neoPix, False)
@@ -245,6 +285,8 @@ def ledWorker():
             randomStrips(neoPix, False, blankColour = (0, 0, 0))
         elif currentPattern == "black_and_white":
             randomStrips(neoPix, False, (255, 255, 255))
+        elif currentPattern == "green_pong":
+            pong(neoPix, False)
         sleep(0.1)
 
 loadConfig()
@@ -370,7 +412,15 @@ try:
             else:
                 currentPattern = "default"
                 updateState()
-                replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
+                if configData["mode"] == 1:
+                    slaveList = configData["slave_nodes"]
+                    if len(slaveList) <= 0:
+                        replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
+                    else:
+                        errorList = distributeModeUpdate(slaveList)             
+                        replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
+                else:
+                    replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
             
         elif requestURL.count("ledoff") != 0:
             if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
@@ -378,11 +428,21 @@ try:
             else:
                 currentPattern = "off"
                 updateState()
-                replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
+                if configData["mode"] == 1:
+                    slaveList = configData["slave_nodes"]
+                    if len(slaveList) <= 0:
+                        replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
+                    else:
+                        errorList = distributeModeUpdate(slaveList)             
+                        replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
+                else:
+                    replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
             
         elif requestURL.count("configstatus") != 0:
             data = {"Message" : "Config Data"}
-            data.update(configData)
+            tempData = configData.copy()
+            tempData.pop("net_password")
+            data.update(tempData)
             replyJson(client, data)
             
         elif requestURL.count("status") != 0:
@@ -450,6 +510,7 @@ try:
                     replyJson(client, {"Message" : "Node master has been updated...", "IP" : f"{filterIP}", "Note" : "For this to truly work you must update the mode aswell." })
         
         elif requestURL.count("resetconfig") != 0:
+            #TODO Add a password here
             configData = configDefaults
             saveConfig()
             replyJson(client, {"Message" : "Config completely reset."}) 
@@ -499,4 +560,5 @@ finally:
     webSocket.close()
             
 print("Bye.")
+
 
