@@ -9,7 +9,7 @@ import socket
 import _thread
 
 #Device
-global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData, GITURL, VERSION
+global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData, GITURL, VERSION, pongDirection, pongPos, pongWidth
 shuttingDown = False
 print("Starting...")
 #Software information
@@ -225,7 +225,7 @@ def ledWorker():
                 if direction:
                     counter = randint(5, 30)
                 else:
-                    counter = randint(-5, -30)
+                    counter = -randint(5, 30)
                 
             if direction:
                 counter -= 1
@@ -234,6 +234,7 @@ def ledWorker():
             pix.write()
 
     def pong(pix, random=False, colour = (0, 255, 0), blankColour = (0,0,0)):
+        global pongDirection, pongPos, pongWidth
         cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
         
         for i in range(0, LEDCOUNT):
