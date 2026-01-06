@@ -59,8 +59,13 @@ class SSD1306:
             SET_CHARGE_PUMP, 0x10 if self.external_vcc else 0x14,
             SET_DISP | 0x01): # on
             self.write_cmd(cmd)
+
         self.fill(0)
         self.show()
+  
+    def rotate(self, rotate):
+        self.write_cmd(SET_COM_OUT_DIR | ((rotate & 1) << 3))
+        self.write_cmd(SET_SEG_REMAP | (rotate & 1))
 
     def poweroff(self):
         self.write_cmd(SET_DISP | 0x00)
@@ -126,17 +131,6 @@ class SSD1306:
                     err += dy
                 y += sy
         self.pixel(x, y, col)
-        
-    def drawBoxOutline(self, x, y, width, height, col=1):
-        self.drawLine(x, y, x + width, y)
-        self.drawLine(x, y, x, y + height)
-        self.drawLine(x + width, y, x + width, y + height)
-        self.drawLine(x, y + height, x + width, y + height)
-        
-    def drawBoxFilled(self, x, y, width, height, col=1):
-        for x1 in range(x, width):
-            for y1 in range(y, height):
-                self.pixel(x1, y1, col)
 
 class SSD1306_I2C(SSD1306):
     def __init__(self, width, height, i2c, addr=0x3c, external_vcc=False):
