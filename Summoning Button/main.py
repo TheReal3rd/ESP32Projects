@@ -118,9 +118,9 @@ posY = 16
 velX = 1
 velY = 1
 motds = [
-    "Welcome 3rd",
-    "Keep calm and debug.",
-    "K.I.S.S",
+    "Welcome 3rd.",
+    "Something random.",
+    "More random things here.",
     "Resenfor is a femboy. Confirmed.",
 ]
 currentMOTD = motds[random.randint(0, len(motds) - 1)]
@@ -135,7 +135,7 @@ def displayIdle():
         scrollX = len(currentMOTD) * 10
         
     scrollX -= 1
-    oled.drawBoxOutline(posX, posY, 25, 10)
+    oled.framebuf.rect(posX, posY, 25, 10, 1, False)
     oled.text("DVD", posX + 1, posY + 2)
     posX += velX
     posY += velY
@@ -163,5 +163,6 @@ while True:
     if freq() != currentFreq:
         freq(currentFreq)
         print(f"CPU clock speed set too: {freq()}")
+
 
     
