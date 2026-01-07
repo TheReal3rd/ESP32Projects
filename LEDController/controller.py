@@ -112,6 +112,9 @@ configData = {
 }
 configDefaults = configData
 
+def clamp(value, minValue, maxVale):
+    return min(maxValue, max(value, minValue))
+
 def saveConfig():
     import ujson
     global configData
@@ -237,8 +240,8 @@ def ledWorker():
         global pongDirection, pongPos, pongWidth
         cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
         
-        for i in range(0, LEDCOUNT):
-            if i in range(pongPos, pongWidth):            
+        for i in range(0, LEDCOUNT - 1):
+            if i in range(pongPos, clamp(pongPos + pongWidth, 0, LEDCOUNT)):            
                 pix[i] = cColour
             else:
                 pix[i] = blankColour
