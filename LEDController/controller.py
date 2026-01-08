@@ -54,8 +54,7 @@ def checkForUpdates(forceDownload=False):
 
 def downloadUpdates():
     import urequests
-    print("Started Updates...")
-    
+    print("Started Updates creating backup now...")
     backupCode = None
     with open("controller.py", "r") as f:
         backupCode = f.read()
@@ -64,7 +63,6 @@ def downloadUpdates():
         with open("controller.py.bak", "w") as f:
             f.write(backupCode)
     
-    print("Finished Update...")
     sleep(0.5)
     print("Freeing up memory.")
     collect()
@@ -84,7 +82,7 @@ def downloadUpdates():
             with open("controller.py", "w") as f:
                 f.write(response.text)
                 
-            print("Finished Restarting...")
+            print("Finished update process. Restarting...")
             reset()
         else:
             print("Failed to fetch update information.")
@@ -92,6 +90,8 @@ def downloadUpdates():
         response.close()
     except Exception as e:
         print(f"Update download request failed: {e}")
+        
+    
 
 #Saved Configuration Section
 #Modes:
@@ -148,25 +148,13 @@ ledPin = Pin(5, Pin.OUT)
 currentPattern = "default"
 
 patternList = [
-    "off",
     "default",
     "rainbow",
     "random_strips",
     "black_and_white",
-    "red",
-    "green",
-    "blue",
-    "white",
-    "dark_green",
     "green_strips",
-    "purple",
-    "violet",
-    "yellow",
-    "orange",
-    "cyan",
     "green_pong"
 ]
-
 fixedColourDict = {
     "off" : (0, 0, 0),
     "red" : (255, 0, 0),
@@ -180,7 +168,7 @@ fixedColourDict = {
     "orange" : (255, 145, 0),
     "cyan" : (0, 255, 255)
 }
-
+patternList.append(fixedColourDict.keys())
 
 def ledWorker():
     global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict
