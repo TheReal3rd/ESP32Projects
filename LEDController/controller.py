@@ -13,13 +13,87 @@ global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configDa
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.4"
+VERSION = "1.5"
 CREDITS = "TheReal3rd"
 GITURL = "http://51.158.144.14/files/ledController/{fileName}"
 FILES_DICT = {
     "ver" : "version.json",
     "controller" : "controller.py"
 }
+
+#Keyboard list gened by AI.
+filterLists = {
+    "VARIABLE_KEYWORDS" : [
+        
+    ]
+    "ALLOWED_KEYWORDS" : [
+        "neopixel",
+        "machine",
+        "Pin",
+        "time",
+        "sleep",
+        "math",
+        "range",
+        "len"
+    ]
+    "DANGEROUS_KEYWORDS" : [
+        "exec",
+        "eval",
+        "compile",
+        "__import__",
+        "globals",
+        "locals",
+        "open(",
+        "os.",
+        "uos.",
+        "remove",
+        "rename",
+        "socket",
+        "network",
+        "wifi",
+        "bluetooth",
+        "urequests",
+        "http",
+        "mqtt",
+        "ADC",
+        "I2C",
+        "SPI",
+        "UART",
+        "PWM",
+        "gc.",
+        "sys.",
+        "machine.reset",
+        "machine.deepsleep"
+    ],
+    "OBFUSCATION_KEYWORDS" : [
+        "base64",
+        "binascii",
+        "encode",
+        "decode",
+        "xor",
+        "aes",
+        "rsa",
+        "zlib",
+        "gzip",
+        "deflate",
+        "bytes(",
+        "bytearray(",
+        "ord(",
+        "chr("
+    ]
+}
+
+#Custom pattern object for user to submit python code and to be stored and exec'ed
+class patternObject():
+
+    _patternCode = ""
+    
+    def __init__(self, patternCode):
+        self._patternCode = patternCode
+
+    def execute(self, neoPix):
+        pass
+    
 
 #Self Updating Section
 def checkForUpdates(forceDownload=False):
@@ -108,9 +182,12 @@ configData = {
     "auto_update" : True,
     "auto_update_check" : True,
     "net_ssid" : "",
-    "net_password" : ""
+    "net_password" : "",
+    "red" : 255,
+    "green" : 255,
+    "blue" : 255
 }
-configDefaults = configData
+configDefaults = configData.copy()
 
 def clamp(value, minValue, maxVale):
     return min(maxValue, max(value, minValue))
@@ -153,7 +230,8 @@ patternList = [
     "random_strips",
     "black_and_white",
     "green_strips",
-    "green_pong"
+    "green_pong",
+    "custom"
 ]
 fixedColourDict = {
     "off" : (0, 0, 0),
@@ -279,6 +357,8 @@ def ledWorker():
             randomStrips(neoPix, False, (255, 255, 255))
         elif currentPattern == "green_pong":
             pong(neoPix, False)
+        elif currentPattern == "custom":
+            applyColour(neoPix, False, (configData["red"], configData["green"], configData["blue"]))
         sleep(0.1)
 
 loadConfig()
@@ -396,7 +476,21 @@ try:
                 replyJson(client, {"Error" : "Parameter provided for a command that doesn't take any?"})
 
         elif requestURL.count("listpatterns") != 0:
-            replyJson(client, {"Message" : "Here are all the available patterns.", "Patterns" : patternList})
+            if paramLength == 0:
+                replyJson(client, {"Message" : "Here are all the available patterns.", "Patterns" : patternList})
+            else:
+                replyJson(client, {"Error" : "Here are all the available patterns.")
+                
+        elif requestURL.count("custompattern") != 0:
+            if paramLength == 3:
+                configData["red"] = param[0]
+                configData["green"] = param[1]
+                configData["blue"] = param[2]
+                saveConfig()
+                currentPattern = "custom" 
+                updateState()
+            else:
+                replyJson(client, {"Error" : "Invalid set of parameters provided. Ensure Red, Green and Blue colour values within 0-255 range.")
         
         elif requestURL.count("ledon") != 0:
             if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
@@ -446,7 +540,7 @@ try:
                           "WifiName" : netSSID,
                           "LEDCount" : LEDCOUNT,
                           "Version" : VERSION
-                          })
+                        })
             
         elif requestURL.count("configset") != 0:
             if paramLength <= 0 or paramLength >= 2:
