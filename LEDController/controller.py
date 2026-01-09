@@ -215,7 +215,7 @@ def downloadUpdates():
 # 1 - Master Controller. (Will send updates and current pattern info to listed slaves.)
 # 2 - Slave. (Only does what the set master tell it to do.)
 #TODO maybe add a third chain mode where it slave and master to build a chain of controllers.
-configData = {
+configData = {#Note: Ensure the naming scheme uses snake case and all lower case. 
     "mode" : 0,
     "slave_nodes" : [],
     "master_to" : "",
@@ -228,7 +228,8 @@ configData = {
     "red" : 255,
     "green" : 255,
     "blue" : 255,
-    "ledCount" : 50
+    "led_count" : 50,
+    "authCode" : "P4ssw0rd1" # Ensure this get changed when program is in use.
 }
 configDefaults = configData.copy()
 
@@ -604,7 +605,7 @@ try:
                     replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
                 else:
                     param = paramsList[0]
-                    if param[0] in configData.keys():
+                    if param[0] in [s.lower() for s in configData.keys()]:
                         valueType = type(configData[param[0]])
                         configData[param[0]] = valueType(param[1])
                         replyJson(client, {"Message" : "Updated Value", f"{param[0]}" : f"{param[1]}" })
@@ -653,10 +654,14 @@ try:
                         replyJson(client, {"Message" : "Node master has been updated...", "IP" : f"{filterIP}", "Note" : "For this to truly work you must update the mode aswell." })
             
             elif requestURL.count("resetconfig") != 0:
-                #TODO Add a password here
-                configData = configDefaults
-                saveConfig()
-                replyJson(client, {"Message" : "Config completely reset."}) 
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given.", "Note" : "The auth code must be provided for this action." }, 500)
+                else:
+                    param = paramsList[0]
+                    if param[0] == "authCode" and param[1] == configData["authCode"]:#Possible issue with cap sensitivity.
+                        configData = configDefaults
+                        saveConfig()
+                        replyJson(client, {"Message" : "Config completely reset."})
                         
             elif requestURL.count("mode") != 0:
                 masterNodeIP = configData["master_to"]
