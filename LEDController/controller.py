@@ -13,7 +13,7 @@ global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configDa
 shuttingDown = False
 print("Starting...")
 #Software information
-VERSION = "1.5"
+VERSION = "1.6"
 CREDITS = "TheReal3rd"
 GITURL = "http://51.158.144.14/files/ledController/{fileName}"
 FILES_DICT = {
@@ -229,11 +229,12 @@ configData = {#Note: Ensure the naming scheme uses snake case and all lower case
     "green" : 255,
     "blue" : 255,
     "led_count" : 50,
-    "authCode" : "P4ssw0rd1" # Ensure this get changed when program is in use.
+    "auth_code" : "p4ssw0rd1", # Ensure this get changed when program is in use.
+    "dimness" : 0
 }
 configDefaults = configData.copy()
 
-def clamp(value, minValue, maxVale):
+def clamp(value, minValue, maxValue):
     return min(maxValue, max(value, minValue))
 
 def saveConfig():
@@ -260,12 +261,22 @@ def loadConfig():
 
 #LED Section
 def updateState():
-    global currentPattern, configData
+    global currentPattern, configData, dimness
     if currentPattern == "default":
         currentPattern = configData["default_pattern"]
+        
+    
+    dimnessValue = configData["dimness"]# No direct brightness setting. Could subtract from colour values. But decide later whether to add this.
+    if dimness != dimnessValue:
+        if dimnessValue < 0 or dimnessValue > 150:
+            dimness = clamp(dimnessValue, 0, 150)
+            configData["dimness"] = dimness
+        else:
+            dimness = dimnessValue
 
 ledPin = Pin(5, Pin.OUT)
 currentPattern = "default"
+dimness = 0
 
 patternList = [
     "default",
@@ -274,7 +285,8 @@ patternList = [
     "black_and_white",
     "green_strips",
     "green_pong",
-    "custom"
+    "custom",
+    "rainbow_fill"
 ]
 fixedColourDict = {
     "off" : (0, 0, 0),
@@ -291,14 +303,21 @@ fixedColourDict = {
 }
 for colour in fixedColourDict.keys():
     patternList.append(colour)
-print(patternList)
+    
+def darkenColour(colour, amount):
+    return (
+        clamp(colour[0] - amount, 0, 255),
+        clamp(colour[1] - amount, 0, 255),
+        clamp(colour[2] - amount, 0, 255)
+    )
 
 def ledWorker():
-    global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict
+    global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict, brightness, pongPos, pongWidth, pongDirection, pongStep
     
     pongPos = 0
-    pongWidth = 15
+    pongWidth = 5
     pongDirection = True
+    pongStep = 0
 
     def hsv_to_rgb_int(h):#AI
         h %= 1536
@@ -348,23 +367,28 @@ def ledWorker():
             pix.write()
 
     def pong(pix, random=False, colour = (0, 255, 0), blankColour = (0,0,0)):
-        global pongDirection, pongPos, pongWidth
+        global pongDirection, pongPos, pongWidth, pongStep
         cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
         
-        for i in range(0, LEDCOUNT - 1):
-            if i in range(pongPos, clamp(pongPos + pongWidth, 0, LEDCOUNT)):            
+        for i in range(LEDCOUNT):
+            if pongPos <= i < pongPos + pongWidth:            
                 pix[i] = cColour
+                cColour = darkenColour(cColour, pongStep * 5)
+                pongStep += 1
             else:
                 pix[i] = blankColour
         
         if pongDirection:
             pongPos += 1
-            if pongPos >= LEDCOUNT:
-                pongDirection = True
+            if pongPos >= LEDCOUNT - pongWidth:
+                pongDirection = False
+                pongWidth = randint(2, 10)
         else:
             pongPos -= 1
             if pongPos <= 0:
-                pongDirection = False
+                pongDirection = True
+                pongWidth = randint(2, 10)
+        pongStep = 0
 
         pix.write()
         
@@ -373,13 +397,11 @@ def ledWorker():
     applyColour(neoPix, False)
 
     sleep(0.5)
-    applyColour(neoPix, False, (255, 255, 255))
-    sleep(0.5)
     applyColour(neoPix, False, (0, 0, 0))
     sleep(0.5)
     
     hue_offset = 0
-    hue_step_per_led = 1536 // LEDCOUNT        
+    hue_step_per_led = 1536 // LEDCOUNT
         
     while not shuttingDown:
         if currentPattern in fixedColourDict.keys():
@@ -393,7 +415,11 @@ def ledWorker():
                 base += hue_step_per_led
             neoPix.write()
             hue_offset = (hue_offset + 20) & 0xFFFF
-        
+        elif currentPattern == "rainbow_fill":
+            rgb = hsv_to_rgb_int(hue_offset)
+            neoPix.fill(rgb)
+            neoPix.write()
+            hue_offset = (hue_offset + 20) & 0xFFFF
         elif currentPattern == "random_strips":
             randomStrips(neoPix, True)
         elif currentPattern == "green_strips":
@@ -448,8 +474,103 @@ def replyJson(client, data, statusCode = 200):
     client.sendall(body)
     client.close()
     
-def replyHttp(client, data):
+pageBody = {
+    "codeEditor" : """
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pattern Editor(Python)</title>
+
+<style>
+html,body{margin:0;height:100%;background:#0e0e0e;color:#eee;font-family:monospace}
+form{height:100%;display:flex;flex-direction:column}
+#editor{flex:1}
+textarea{
+width:100%;height:100%;
+background:#0e0e0e;color:#eee;
+border:0;padding:12px;
+font:14px/1.4 monospace;
+resize:none;outline:none;
+}
+button{
+background:#1e1e1e;color:#fff;
+border:0;padding:10px;
+font:14px monospace;
+cursor:pointer
+}
+button:hover{background:#333}
+</style>
+</head>
+
+<body>
+<form method="post" action="/submit" onsubmit="syncCode()">
+
+<div id="editor">
+<textarea id="fallback" name="code" spellcheck="false">
+#Example function on how written code will be executed and what parameters are availble.
+#def execute(self, neoPix):
+    #exec(_patternCode)
+    
+def execute(self, neoPix):
     pass
+    #write your code here.
+    
+</textarea>
+</div>
+
+<button type="submit">Submit Code</button>
+</form>
+
+<script>
+let editor, usingMonaco=false
+
+function syncCode(){
+  if(usingMonaco){
+    document.getElementById("fallback").value = editor.getValue()
+  }
+}
+
+(function(){
+  if(!navigator.onLine) return
+
+  const s=document.createElement("script")
+  s.src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"
+  s.onerror=()=>console.log("Monaco failed, using textarea")
+  s.onload=()=>{
+    require.config({paths:{vs:"https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs"}})
+    require(["vs/editor/editor.main"],()=>{
+      const ta=document.getElementById("fallback")
+      const div=document.createElement("div")
+      div.style.height="100%"
+      ta.replaceWith(div)
+
+      editor=monaco.editor.create(div,{
+        value:ta.value,
+        language:"python",
+        theme:"vs-dark",
+        automaticLayout:true,
+        minimap:{enabled:false}
+      })
+      usingMonaco=true
+    })
+  }
+  document.body.appendChild(s)
+})()
+</script>
+
+</body>
+</html>
+"""#Entirely created by AI. I Hate HTML.
+} 
+    
+def replyHttp(client):
+    body = pageBody["codeEditor"]
+    client.sendall(f'HTTP/1.1 200 OK\r\n'.encode())
+    client.sendall(f'Content-Type: text/html\r\n'.encode())
+    client.sendall(f'Content-Length: {len(body)}\r\n\r\n'.encode())
+    client.sendall(body)
+    client.close()
     
 def sCleanup(stringContent):
     import re
@@ -527,6 +648,9 @@ try:
                     checkForUpdates(True)
                 else:
                     replyJson(client, {"Error" : "Parameter provided for a command that doesn't take any?"})
+                    
+            elif requestURL.count("pattern_editor") != 0:
+                replyHttp(client)
 
             elif requestURL.count("listpatterns") != 0:
                 if paramLength == 0:
@@ -586,6 +710,7 @@ try:
                 data = {"Message" : "Config Data"}
                 tempData = configData.copy()
                 tempData.pop("net_password")
+                tempData.pop("auth_code")
                 data.update(tempData)
                 replyJson(client, data)
                 
@@ -609,6 +734,7 @@ try:
                         valueType = type(configData[param[0]])
                         configData[param[0]] = valueType(param[1])
                         replyJson(client, {"Message" : "Updated Value", f"{param[0]}" : f"{param[1]}" })
+                        updateState()
                         saveConfig()
                     else:
                         replyJson(client, {"Message" : "Error", "Error" : "The given name doesn't exist?" }, 500)
@@ -658,7 +784,7 @@ try:
                     replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given.", "Note" : "The auth code must be provided for this action." }, 500)
                 else:
                     param = paramsList[0]
-                    if param[0] == "authCode" and param[1] == configData["authCode"]:#Possible issue with cap sensitivity.
+                    if param[0].lower() == "auth_code" and param[1].lower() == configData["auth_code"]:
                         configData = configDefaults
                         saveConfig()
                         replyJson(client, {"Message" : "Config completely reset."})
@@ -708,6 +834,3 @@ finally:
     webSocket.close()
             
 print("Bye.")
-
-
-
