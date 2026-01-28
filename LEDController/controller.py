@@ -147,7 +147,27 @@ def timeSync(netWlan):
         print("RTC Sync Done.")
     except Exception as es:
         print(f"Failed RTC sync. Error: {es}")
-        
+
+def timeToMillis(timeTuple):
+    hours = timeTuple[0] * 3600000
+    minutes = timeTuple[1] * 60000
+    seconds = timTuple[2] * 1000
+    return int(hours + minutes + seconds)
+
+def checkForSleep():
+    global rtc, configData
+    if not configData["auto_sleep"]:
+        return
+
+    now = rtc.datetime()
+    sleepTime = configData["deep_sleep_start"]
+    if now[4] == sleepTime[0] and now[5] == sleepTime[1] and new[6] == sleepTime[2]:
+        wakeTime = configData["deep_seep_wake"]
+        sleepDuration = timeToMillis(wakeTime) - timeToMillis(sleepTime)
+        currentPattern = "off"
+        print("Device sleeping for {wakeTime}ms {wakeTime // 60000}minutes")
+        sleep(5)
+        deepsleep(wakeTime)
 
 #Self Updating Section
 def checkForUpdates(forceDownload=False):
@@ -244,7 +264,8 @@ configData = {#Note: Ensure the naming scheme uses snake case and all lower case
     "auth_code" : "p4ssw0rd1", # Ensure this get changed when program is in use.
     "dimness" : 0, # TODO add a brightness option but its diffcult to implment due to no direct brightness access. Possible do a across board reduction on RGB with by the percentage.
     "auto_sleep" : False,
-    "sleep_times" : []
+    "deep_sleep_start" : (0, 0, 0),
+    "deep_sleep_wake" : (0, 0, 0)
 }
 configDefaults = configData.copy()
 
