@@ -1,4 +1,4 @@
-from machine import Pin, reset
+from machine import Pin, reset, RTC
 from gc import collect, mem_free
 from random import randint, choice
 from time import sleep, time
@@ -135,7 +135,19 @@ class patternObject():
 
     def execute(self, neoPix):
         exec(_patternCode)
-    
+
+def timeSync(netWlan):
+    import ntptime
+    if not netWlan.isconnected():
+        print("Failed to resync the RTC. No network connection.")
+        return
+
+    try:
+        ntptime.settime()
+        print("RTC Sync Done.")
+    except Exception as es:
+        print(f"Failed RTC sync. Error: {es}")
+        
 
 #Self Updating Section
 def checkForUpdates(forceDownload=False):
@@ -230,7 +242,9 @@ configData = {#Note: Ensure the naming scheme uses snake case and all lower case
     "blue" : 255,
     "led_count" : 50,
     "auth_code" : "p4ssw0rd1", # Ensure this get changed when program is in use.
-    "dimness" : 0
+    "dimness" : 0, # TODO add a brightness option but its diffcult to implment due to no direct brightness access. Possible do a across board reduction on RGB with by the percentage.
+    "auto_sleep" : False,
+    "sleep_times" : []
 }
 configDefaults = configData.copy()
 
@@ -446,6 +460,10 @@ netPassword = configData["net_password"]
 netWlan = network.WLAN(network.STA_IF)
 netWlan.active(True)
 netWlan.connect(netSSID, netPassword)
+
+timeSync(netWlan)
+rtc = machine.RTC()
+print("Current time and date: {rtc.datetime()}")
 
 deviceIP = None
 
