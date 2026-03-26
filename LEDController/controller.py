@@ -8,20 +8,17 @@ import network
 import socket
 import _thread
 
-#Device
+# Device
 global shuttingDown, LEDCOUNT, ledPin, currentPattern, fixedColourDict, configData, GITURL, VERSION, pongDirection, pongPos, pongWidth
 shuttingDown = False
 print("Starting...")
-#Software information
-VERSION = "1.6"
+# Software information
+VERSION = "1.7"
 CREDITS = "TheReal3rd"
 GITURL = "http://51.158.144.14/files/ledController/{fileName}"
-FILES_DICT = {
-    "ver" : "version.json",
-    "controller" : "controller.py"
-}
+FILES_DICT = {"ver": "version.json", "controller": "controller.py"}
 
-#keyword list gened by AI.
+# keyword list gened by AI.
 filterLists = {
     "VARIABLE_KEYWORDS": [
         "shuttingDown",
@@ -56,7 +53,7 @@ filterLists = {
         "checkForUpdates",
         "downloadUpdates",
         "ledWorker",
-        "distributeModeUpdate"
+        "distributeModeUpdate",
     ],
     "ALLOWED_KEYWORDS": [
         "neopixel",
@@ -66,7 +63,7 @@ filterLists = {
         "sleep",
         "math",
         "range",
-        "len"
+        "len",
     ],
     "DANGEROUS_KEYWORDS": [
         "exec",
@@ -95,7 +92,7 @@ filterLists = {
         "gc.",
         "sys.",
         "machine.reset",
-        "machine.deepsleep"
+        "machine.deepsleep",
     ],
     "OBFUSCATION_KEYWORDS": [
         "base64",
@@ -111,9 +108,10 @@ filterLists = {
         "bytes(",
         "bytearray(",
         "ord(",
-        "chr("
-    ]
+        "chr(",
+    ],
 }
+
 
 def scanCode(submittedCode):
     violationsList = []
@@ -124,20 +122,23 @@ def scanCode(submittedCode):
     if any(k in submittedCode for k in filterLists["OBFUSCATION_KEYWORDS"]):
         violationsList.append("Uneeded use of obfusaction.")
     return violationsList
-    
-#Custom pattern object for user to submit python code and to be stored and exec'ed
-class patternObject():
+
+
+# Custom pattern object for user to submit python code and to be stored and exec'ed
+class patternObject:
 
     _patternCode = ""
-    
+
     def __init__(self, patternCode):
         self._patternCode = patternCode
 
     def execute(self, neoPix):
         exec(_patternCode)
 
+
 def timeSync(netWlan):
     import ntptime
+
     if not netWlan.isconnected():
         print("Failed to resync the RTC. No network connection.")
         return
@@ -148,11 +149,13 @@ def timeSync(netWlan):
     except Exception as es:
         print(f"Failed RTC sync. Error: {es}")
 
+
 def timeToMillis(timeTuple):
     hours = timeTuple[0] * 3600000
     minutes = timeTuple[1] * 60000
     seconds = timTuple[2] * 1000
     return int(hours + minutes + seconds)
+
 
 def checkForSleep():
     global rtc, configData
@@ -169,29 +172,23 @@ def checkForSleep():
         sleep(5)
         deepsleep(wakeTime)
 
-def logCrash(exception, userNotes):#Temporary crash log once stability improves... -3rd
-    gc.clear()
-    file = open("w", "CrashLog.txt")
-    file.write(f"Exception: {exception}")
-    file.write(f"\nUserNotes: {userNotes}")
-    file.close()
-    gc.clear()
 
-#Self Updating Section
+# Self Updating Section
 def checkForUpdates(forceDownload=False):
     import urequests
     import ujson
+
     global GITURL
     doUpdate = False
     try:
-        url = GITURL.format(fileName = FILES_DICT["ver"])
+        url = GITURL.format(fileName=FILES_DICT["ver"])
         print(url)
         response = urequests.get(url)
-        
+
         if response.status_code == 200:
             print("Successfully fetch update information.")
             responseDict = ujson.loads(response.text)
-            
+
             if responseDict["Version"] != VERSION:
                 print("Update is needed.")
                 if configData["auto_update"]:
@@ -200,95 +197,101 @@ def checkForUpdates(forceDownload=False):
                 print("No updates are needed.")
         else:
             print("Failed to fetch update information.")
-                
+
         response.close()
     except Exception as e:
         print(f"Check Update Request failed: {e}")
-        
+
     if doUpdate or forceDownload:
         downloadUpdates()
 
+
 def downloadUpdates():
     import urequests
+
     print("Started Updates creating backup now...")
     backupCode = None
     with open("controller.py", "r") as f:
         backupCode = f.read()
-    
+
     if backupCode:
         with open("controller.py.bak", "w") as f:
             f.write(backupCode)
-    
+
     sleep(0.5)
     print("Freeing up memory.")
     collect()
     print(f"Currently avaible memory: {mem_free()}")
     sleep(0.5)
-    
+
     print("Starting download.")
     try:
-        url = GITURL.format(fileName = FILES_DICT["controller"])
+        url = GITURL.format(fileName=FILES_DICT["controller"])
         print(url)
         response = urequests.get(url)
-        
+
         print(response.status_code)
-        
+
         if response.status_code == 200:
             print("Downloaded update...")
             with open("controller.py", "w") as f:
                 f.write(response.text)
-                
+
             print("Finished update process. Restarting...")
             reset()
         else:
             print("Failed to fetch update information.")
-                
+
         response.close()
     except Exception as e:
         print(f"Update download request failed: {e}")
-        
-    
 
-#Saved Configuration Section
-#Modes:
+
+# Saved Configuration Section
+# Modes:
 # 0 - Standard LED Controller.
 # 1 - Master Controller. (Will send updates and current pattern info to listed slaves.)
 # 2 - Slave. (Only does what the set master tell it to do.)
-#TODO maybe add a third chain mode where it slave and master to build a chain of controllers.
-configData = {#Note: Ensure the naming scheme uses snake case and all lower case. 
-    "mode" : 0,
-    "slave_nodes" : [],
-    "master_to" : "",
-    "default_pattern" : "green_strips",
-    "on_boot_distribute" : True,
-    "auto_update" : True,
-    "auto_update_check" : True,
-    "net_ssid" : "",
-    "net_password" : "",
-    "red" : 255,
-    "green" : 255,
-    "blue" : 255,
-    "led_count" : 50,
-    "auth_code" : "p4ssw0rd1", # Ensure this get changed when program is in use.
-    "dimness" : 0, # TODO add a brightness option but its diffcult to implment due to no direct brightness access. Possible do a across board reduction on RGB with by the percentage.
-    "auto_sleep" : False,
-    "deep_sleep_start" : (0, 0, 0),
-    "deep_sleep_wake" : (0, 0, 0)
+# TODO maybe add a third chain mode where it slave and master to build a chain of controllers.
+configData = {  # Note: Ensure the naming scheme uses snake case and all lower case.
+    "mode": 0,
+    "slave_nodes": [],
+    "master_to": "",
+    "default_pattern": "green_strips",
+    "on_boot_distribute": True,
+    "auto_update": True,
+    "auto_update_check": True,
+    "net_ssid": "",
+    "net_password": "",
+    "red": 255,
+    "green": 255,
+    "blue": 255,
+    "led_count": 50,
+    "auth_code": "p4ssw0rd1",  # Ensure this get changed when program is in use.
+    "dimness": 0,  # TODO add a brightness option but its diffcult to implment due to no direct brightness access. Possible do a across board reduction on RGB with by the percentage.
+    "auto_sleep": False,
+    "deep_sleep_start": (0, 0, 0),
+    "deep_sleep_wake": (0, 0, 0),
 }
 configDefaults = configData.copy()
+
 
 def clamp(value, minValue, maxValue):
     return min(maxValue, max(value, minValue))
 
+
 def saveConfig():
     import ujson
+
     global configData
     with open("configData.json", "w") as f:
         ujson.dump(configData, f)
     print("Config Data Saved.")
 
+
 def loadConfig():
     import ujson
+
     global configData
     try:
         with open("configData.json", "r") as f:
@@ -302,20 +305,23 @@ def loadConfig():
         saveConfig()
         loadConfig()
 
-#LED Section
+
+# LED Section
 def updateState():
     global currentPattern, configData, dimness
     if currentPattern == "default":
         currentPattern = configData["default_pattern"]
-        
-    
-    dimnessValue = configData["dimness"]# No direct brightness setting. Could subtract from colour values. But decide later whether to add this.
+
+    dimnessValue = configData[
+        "dimness"
+    ]  # No direct brightness setting. Could subtract from colour values. But decide later whether to add this.
     if dimness != dimnessValue:
         if dimnessValue < 0 or dimnessValue > 150:
             dimness = clamp(dimnessValue, 0, 150)
             configData["dimness"] = dimness
         else:
             dimness = dimnessValue
+
 
 ledPin = Pin(5, Pin.OUT)
 currentPattern = "default"
@@ -329,61 +335,71 @@ patternList = [
     "green_strips",
     "green_pong",
     "custom",
-    "rainbow_fill"
+    "rainbow_fill",
 ]
 fixedColourDict = {
-    "off" : (0, 0, 0),
-    "red" : (255, 0, 0),
-    "green" : (0, 255, 0),
-    "blue" : (0, 0, 255),
-    "white" : (255, 255, 255),
-    "dark_green" : (0, 100, 0),
-    "purple" : (255, 0, 255),
-    "violet" : (148,0,211),
-    "yellow" : (255, 226, 0),
-    "orange" : (255, 145, 0),
-    "cyan" : (0, 255, 255)
+    "off": (0, 0, 0),
+    "red": (255, 0, 0),
+    "green": (0, 255, 0),
+    "blue": (0, 0, 255),
+    "white": (255, 255, 255),
+    "dark_green": (0, 100, 0),
+    "purple": (255, 0, 255),
+    "violet": (148, 0, 211),
+    "yellow": (255, 226, 0),
+    "orange": (255, 145, 0),
+    "cyan": (0, 255, 255),
 }
 for colour in fixedColourDict.keys():
     patternList.append(colour)
-    
+
+
 def darkenColour(colour, amount):
     return (
         clamp(colour[0] - amount, 0, 255),
         clamp(colour[1] - amount, 0, 255),
-        clamp(colour[2] - amount, 0, 255)
+        clamp(colour[2] - amount, 0, 255),
     )
+
 
 def ledWorker():
     global shuttingDown, LEDCOUNT, ledPin, currentPattern, neoPix, fixedColourDict, brightness, pongPos, pongWidth, pongDirection, pongStep
-    
+
     pongPos = 0
     pongWidth = 5
     pongDirection = True
     pongStep = 0
 
-    def hsv_to_rgb_int(h):#AI
+    def hsv_to_rgb_int(h):  # AI
         h %= 1536
         segment = h >> 8
-        offset  = h & 0xFF 
-        if segment == 0:  r, g, b = 255, offset, 0
-        elif segment == 1: r, g, b = 255 - offset, 255, 0
-        elif segment == 2: r, g, b = 0, 255, offset
-        elif segment == 3: r, g, b = 0, 255 - offset, 255
-        elif segment == 4: r, g, b = offset, 0, 255
-        else:              r, g, b = 255, 0, 255 - offset
+        offset = h & 0xFF
+        if segment == 0:
+            r, g, b = 255, offset, 0
+        elif segment == 1:
+            r, g, b = 255 - offset, 255, 0
+        elif segment == 2:
+            r, g, b = 0, 255, offset
+        elif segment == 3:
+            r, g, b = 0, 255 - offset, 255
+        elif segment == 4:
+            r, g, b = offset, 0, 255
+        else:
+            r, g, b = 255, 0, 255 - offset
         return r, g, b
-    
-    def applyColour(pix, updateWithLoop, colour = (0,0,0)):
+
+    def applyColour(pix, updateWithLoop, colour=(0, 0, 0)):
         for i in range(LEDCOUNT):
             pix[i] = colour
             if updateWithLoop:
                 pix.write()
         if not updateWithLoop:
             pix.write()
-            
-    def randomStrips(pix, random=False, colour=(0, 255, 0), blankColour = (0,0,0)):
-        cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
+
+    def randomStrips(pix, random=False, colour=(0, 255, 0), blankColour=(0, 0, 0)):
+        cColour = (
+            (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
+        )
         counter = 0
         blank = False
         direction = choice([True, False])
@@ -395,32 +411,38 @@ def ledWorker():
                     cColour = blankColour
                     blank = False
                 else:
-                    cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
+                    cColour = (
+                        (randint(0, 255), randint(0, 255), randint(0, 255))
+                        if (random)
+                        else colour
+                    )
                     blank = True
-                
+
                 if direction:
                     counter = randint(5, 30)
                 else:
                     counter = -randint(5, 30)
-                
+
             if direction:
                 counter -= 1
             else:
                 counter += 1
             pix.write()
 
-    def pong(pix, random=False, colour = (0, 255, 0), blankColour = (0,0,0)):
+    def pong(pix, random=False, colour=(0, 255, 0), blankColour=(0, 0, 0)):
         global pongDirection, pongPos, pongWidth, pongStep
-        cColour = (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
-        
+        cColour = (
+            (randint(0, 255), randint(0, 255), randint(0, 255)) if (random) else colour
+        )
+
         for i in range(LEDCOUNT):
-            if pongPos <= i < pongPos + pongWidth:            
+            if pongPos <= i < pongPos + pongWidth:
                 pix[i] = cColour
                 cColour = darkenColour(cColour, pongStep * 5)
                 pongStep += 1
             else:
                 pix[i] = blankColour
-        
+
         if pongDirection:
             pongPos += 1
             if pongPos >= LEDCOUNT - pongWidth:
@@ -434,22 +456,21 @@ def ledWorker():
         pongStep = 0
 
         pix.write()
-        
-    
+
     neoPix = neopixel.NeoPixel(ledPin, LEDCOUNT)
     applyColour(neoPix, False)
 
     sleep(0.5)
     applyColour(neoPix, False, (0, 0, 0))
     sleep(0.5)
-    
+
     hue_offset = 0
     hue_step_per_led = 1536 // LEDCOUNT
-        
+
     while not shuttingDown:
         if currentPattern in fixedColourDict.keys():
             applyColour(neoPix, False, fixedColourDict[currentPattern])
-             
+
         elif currentPattern == "rainbow":
             base = hue_offset
             for i in range(LEDCOUNT):
@@ -466,14 +487,19 @@ def ledWorker():
         elif currentPattern == "random_strips":
             randomStrips(neoPix, True)
         elif currentPattern == "green_strips":
-            randomStrips(neoPix, False, blankColour = (0, 0, 0))
+            randomStrips(neoPix, False, blankColour=(0, 0, 0))
         elif currentPattern == "black_and_white":
             randomStrips(neoPix, False, (255, 255, 255))
         elif currentPattern == "green_pong":
             pong(neoPix, False)
         elif currentPattern == "custom":
-            applyColour(neoPix, False, (configData["red"], configData["green"], configData["blue"]))
+            applyColour(
+                neoPix,
+                False,
+                (configData["red"], configData["green"], configData["blue"]),
+            )
         sleep(0.1)
+
 
 loadConfig()
 LEDCOUNT = int(configData["ledCount"])
@@ -481,17 +507,17 @@ updateState()
 saveConfig()
 
 print(f"ESP32 LED Controller : Version: {VERSION} Credits: {CREDITS}")
-#Networking Section
+# Networking Section
 netSSID = configData["net_ssid"]
 netPassword = configData["net_password"]
 
-#Networking handling:
+# Networking handling:
 netWlan = network.WLAN(network.STA_IF)
 netWlan.active(True)
 netWlan.connect(netSSID, netPassword)
 
 timeSync(netWlan)
-rtc = machine.RTC()
+rtc = RTC()
 print("Current time and date: {rtc.datetime()}")
 
 deviceIP = None
@@ -504,25 +530,27 @@ while netTries != 0:
     netTries -= 1
     print("Failed to connect retrying...")
     time.sleep(1)
-    
+
 netInfo = netWlan.ifconfig()
 deviceIP = netInfo[0]
-    
+
 print(f"Device IP: {deviceIP}")
-    
-#Web Socket API handling
-def replyJson(client, data, statusCode = 200):
+
+# Web Socket API handling
+def replyJson(client, data, statusCode=200):
     import ujson
+
     body = ujson.dumps(data).encode()
-    client.sendall(f'HTTP/1.1 {statusCode} OK\r\n'.encode())
-    client.sendall(b'Content-Type: application/json\r\n')
-    client.sendall(b'Connection: close\r\n')
-    client.sendall(f'Content-Length: {len(body)}\r\n\r\n'.encode())
+    client.sendall(f"HTTP/1.1 {statusCode} OK\r\n".encode())
+    client.sendall(b"Content-Type: application/json\r\n")
+    client.sendall(b"Connection: close\r\n")
+    client.sendall(f"Content-Length: {len(body)}\r\n\r\n".encode())
     client.sendall(body)
     client.close()
-    
+
+
 pageBody = {
-    "codeEditor" : """
+    "codeEditor": """
 <!doctype html>
 <html>
 <head>
@@ -608,42 +636,48 @@ function syncCode(){
 
 </body>
 </html>
-"""#Entirely created by AI. I Hate HTML.
-} 
-    
+"""  # Entirely created by AI. I Hate HTML.
+}
+
+
 def replyHttp(client):
     body = pageBody["codeEditor"]
-    client.sendall(f'HTTP/1.1 200 OK\r\n'.encode())
-    client.sendall(f'Content-Type: text/html\r\n'.encode())
-    client.sendall(f'Content-Length: {len(body)}\r\n\r\n'.encode())
+    client.sendall(f"HTTP/1.1 200 OK\r\n".encode())
+    client.sendall(f"Content-Type: text/html\r\n".encode())
+    client.sendall(f"Content-Length: {len(body)}\r\n\r\n".encode())
     client.sendall(body)
     client.close()
-    
+
+
 def sCleanup(stringContent):
     import re
-    return re.sub(r'[^A-Za-z0-9_]', '', stringContent)
+
+    return re.sub(r"[^A-Za-z0-9_]", "", stringContent)
+
 
 def distributeModeUpdate(slaveList):
     import urequests
+
     errorList = []
-                                
+
     for node in slaveList:
         url = f"http://{node}:5000/mode?pattern={currentPattern}"
-                                    
+
         try:
             response = urequests.get(url)
             if response.status_code == 500:
                 errorList.append(f"{node} ran into error {response.text}")
                 continue
-            
+
             elif response.status_code == 200:
                 print("Node Updated Success.")
-                
+
             response.close()
         except Exception as e:
             print(f"Request failed: {e}")
-            
+
     return errorList
+
 
 if configData["auto_update_check"]:
     checkForUpdates()
@@ -667,217 +701,415 @@ if configData["mode"] == 1 and configData["on_boot_distribute"]:
 
 try:
     while not shuttingDown:
-        try:
-            client, clientAddr = webSocket.accept()
-            rawRequest = client.recv(1024)
-            requestParts = rawRequest.split()
-            httpMethods = str(requestParts[0]).lower()
-            requestURL = str(requestParts[1]).replace("/", "").lower()
-            paramsList = []
-            paramLength = 0
-            
-            if httpMethods.count("post") != 0:
-                print("Post Request")
-                
-            else:
-                if requestURL.count("?") != 0:
-                    paramSplit = requestURL.split("?")
-                    requestURL = paramSplit[0]
-                    for param in paramSplit[1].split("&"):
-                        valueSplit = param.split("=")
-                        paramsList.append( ( sCleanup(str(valueSplit[0].lower())), sCleanup(str(valueSplit[1].lower()))) )
-                    paramLength = len(paramsList)
-              
-                print(f"URL: {requestURL} Params: {paramsList} IP: {clientAddr[0]}")
-                
-                if requestURL.count("updatesoftware") != 0:
-                    if paramLength == 0:
-                        replyJson(client, {"Message" : "Checking for updates now."})
-                        checkForUpdates(True)
-                    else:
-                        replyJson(client, {"Error" : "Parameter provided for a command that doesn't take any?"})
-                        
-                elif requestURL.count("pattern_editor") != 0:
-                    replyHttp(client)
 
-                elif requestURL.count("listpatterns") != 0:
-                    if paramLength == 0:
-                        replyJson(client, {"Message" : "Here are all the available patterns.", "Patterns" : patternList})
-                    else:
-                        replyJson(client, {"Error" : "Here are all the available patterns."})
-                        
-                elif requestURL.count("custompattern") != 0:
-                    if paramLength == 3:
-                        for param in paramsList:
-                            if param[0] == "red":
-                                configData["red"] = int(param[1])
-                            elif param[0] == "green":
-                                configData["green"] = int(param[1])
-                            elif param[0] == "blue":
-                                configData["blue"] = int(param[1])
-                        saveConfig()
-                        currentPattern = "custom" 
-                        updateState()
-                        replyJson(client, {"Message" : "Updated pattern with custom colour set.", "Red" : configData["red"], "Green" : configData["green"], "Blue" : configData["blue"]})
-                    else:
-                        replyJson(client, {"Error" : "Invalid set of parameters provided. Ensure Red, Green and Blue colour values within 0-255 range."})
-                
-                elif requestURL.count("ledon") != 0:
-                    if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
-                        replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
-                    else:
-                        currentPattern = "default"
-                        updateState()
-                        if configData["mode"] == 1:
-                            slaveList = configData["slave_nodes"]
-                            if len(slaveList) <= 0:
-                                replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
-                            else:
-                                errorList = distributeModeUpdate(slaveList)             
-                                replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
-                        else:
-                            replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
-                    
-                elif requestURL.count("ledoff") != 0:
-                    if configData["mode"] == 2 and not clientAddr[0] in configData["slave_nodes"]:
-                        replyJson(client, {"Message" : "Error", "Error" : "This node is setup as a Slave node you can't change controllers state directly." }, 500)
-                    else:
-                        currentPattern = "off"
-                        updateState()
-                        if configData["mode"] == 1:
-                            slaveList = configData["slave_nodes"]
-                            if len(slaveList) <= 0:
-                                replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
-                            else:
-                                errorList = distributeModeUpdate(slaveList)             
-                                replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
-                        else:
-                            replyJson(client, {"Message" : "Started...", "CurrentPattern" : currentPattern })
-                    
-                elif requestURL.count("configstatus") != 0:
-                    data = {"Message" : "Config Data"}
-                    tempData = configData.copy()
-                    tempData.pop("net_password")
-                    tempData.pop("auth_code")
-                    data.update(tempData)
-                    replyJson(client, data)
-                    
-                elif requestURL.count("status") != 0:
-                    replyJson(client,
-                              {
-                                  "Message" : "My Status",
-                                  "CurrentPattern" : currentPattern,
-                                  "IP": webAddr,
-                                  "WifiName" : netSSID,
-                                  "LEDCount" : LEDCOUNT,
-                                  "Version" : VERSION
-                                })
-                    
-                elif requestURL.count("configset") != 0:
-                    if paramLength <= 0 or paramLength >= 2:
-                        replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
-                    else:
-                        param = paramsList[0]
-                        if param[0] in [s.lower() for s in configData.keys()]:
-                            valueType = type(configData[param[0]])
-                            configData[param[0]] = valueType(param[1])
-                            replyJson(client, {"Message" : "Updated Value", f"{param[0]}" : f"{param[1]}" })
-                            updateState()
-                            saveConfig()
-                        else:
-                            replyJson(client, {"Message" : "Error", "Error" : "The given name doesn't exist?" }, 500)
-                            
-                elif requestURL.count("slavelist") != 0:
-                    if paramLength <= 0 or paramLength >= 2:
-                        replyJson(client,  {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
-                    else:
-                        param = paramsList[0]
-                        if param[0] == "add":
-                            filterIP = param[1].replace("_", ".")
-                            slaveList = configData["slave_nodes"]
-                            if filterIP in slaveList:
-                                replyJson(client, {"Message" : "Error", "Error" : "Can't add an already exist node / IP to the list." }, 500)
-                            else:
-                                slaveList.append(filterIP)
-                                configData["slave_nodes"] = slaveList
-                                saveConfig()
-                                replyJson(client, {"Message" : "Added new Node", "Node IP" : f"{filterIP}" })
-                            
-                        elif param[0] == "remove":
-                            filterIP = param[1].replace("_", ".")
-                            slaveList = configData["slave_nodes"]
-                            if filterIP in slaveList:
-                                slaveList.remove(filterIP)
-                                configData["slave_nodes"] = slaveList
-                                saveConfig()
-                                replyJson(client, {"Message" : "Removed the requested Node", "Node IP" : f"{filterIP}" })
-                            else:
-                                replyJson(client, {"Message" : "Error", "Error" : "Can't remove a node / IP thats no in the list." }, 500)
-                        else:
-                            replyJson(client, {"Message" : "Error", "Error" : "Provided command is invalid? Use add to add new nodes or remove to remove a node from the list." }, 500)
-                
-                elif requestURL.count("setmaster") != 0:
-                    if paramLength <= 0 or paramLength >= 2:
-                        replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
-                    else:
-                        param = paramsList[0]
-                        if param[0] == "hostname":
-                            filterIP = param[1].replace("_", ".")
-                            configData["master_to"] = filterIP
-                            saveConfig()
-                            replyJson(client, {"Message" : "Node master has been updated...", "IP" : f"{filterIP}", "Note" : "For this to truly work you must update the mode aswell." })
-                
-                elif requestURL.count("resetconfig") != 0:
-                    if paramLength <= 0 or paramLength >= 2:
-                        replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given.", "Note" : "The auth code must be provided for this action." }, 500)
-                    else:
-                        param = paramsList[0]
-                        if param[0].lower() == "auth_code" and param[1].lower() == configData["auth_code"]:
-                            configData = configDefaults
-                            saveConfig()
-                            replyJson(client, {"Message" : "Config completely reset."})
-                            
-                elif requestURL.count("mode") != 0:
-                    masterNodeIP = configData["master_to"]
-                    if configData["mode"] == 2 and not clientAddr[0] == masterNodeIP:
-                        replyJson(client, {"Message" : "Error", "Error" : "Node is set in slave mode send commands to the master node.", "MasterNodeIP" : masterNodeIP }, 500)
+        client, clientAddr = webSocket.accept()
+        rawRequest = client.recv(1024)
+        requestParts = rawRequest.split()
+        httpMethods = str(requestParts[0]).lower()
+        requestURL = str(requestParts[1]).replace("/", "").lower()
+        paramsList = []
+        paramLength = 0
+
+        if httpMethods.count("post") != 0:
+            print("Post Request")
+
+        else:
+            if requestURL.count("?") != 0:
+                paramSplit = requestURL.split("?")
+                requestURL = paramSplit[0]
+                for param in paramSplit[1].split("&"):
+                    valueSplit = param.split("=")
+                    if len(valueSplit) <= 1:
                         continue
-                    
-                    if paramLength <= 0 or paramLength >= 2:
-                        replyJson(client, {"Message" : "Error", "Error" : "Too many parameters or no parameters given." }, 500)
-                    else:
-                        param = paramsList[0]
-                        if param[0] == "pattern":
-                            if param[1] in patternList:
-                                currentPattern = param[1]
-                                updateState()
-                                
-                                if configData["mode"] == 1:
-                                    slaveList = configData["slave_nodes"]
-                                    if len(slaveList) <= 0:
-                                        replyJson(client, {"Warning" : "Controller setup as a master with no nodes configured?"})
-                                    else:
-                                        errorList = distributeModeUpdate(slaveList)
-                                                
-                                        replyJson(client, {"Message" : "Updates Distrubuted...", "Errors:" : errorList})
-                                else:
-                                    replyJson(client, {"Message" : "Updated Mode", "CurrentPattern" : currentPattern })
-                            else:
-                                replyJson(client, {"Message" : "Error", "Error" : "Provided pattern isn't within the list?" }, 500)
+                    paramsList.append( ( sCleanup(str(valueSplit[0].lower())), sCleanup(str(valueSplit[1].lower()))) )
+                paramLength = len(paramsList)
+
+            print(f"URL: {requestURL} Params: {paramsList} IP: {clientAddr[0]}")
+
+            if requestURL.count("updatesoftware") != 0:
+                if paramLength == 0:
+                    replyJson(client, {"Message": "Checking for updates now."})
+                    checkForUpdates(True)
+                else:
+                    replyJson(
+                        client,
+                        {
+                            "Error": "Parameter provided for a command that doesn't take any?"
+                        },
+                    )
+
+            elif requestURL.count("pattern_editor") != 0:
+                replyHttp(client)
+
+            elif requestURL.count("listpatterns") != 0:
+                if paramLength == 0:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Here are all the available patterns.",
+                            "Patterns": patternList,
+                        },
+                    )
+                else:
+                    replyJson(client, {"Error": "Here are all the available patterns."})
+
+            elif requestURL.count("custompattern") != 0:
+                if paramLength == 3:
+                    for param in paramsList:
+                        if param[0] == "red":
+                            configData["red"] = int(param[1])
+                        elif param[0] == "green":
+                            configData["green"] = int(param[1])
+                        elif param[0] == "blue":
+                            configData["blue"] = int(param[1])
+                    saveConfig()
+                    currentPattern = "custom"
+                    updateState()
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Updated pattern with custom colour set.",
+                            "Red": configData["red"],
+                            "Green": configData["green"],
+                            "Blue": configData["blue"],
+                        },
+                    )
+                else:
+                    replyJson(
+                        client,
+                        {
+                            "Error": "Invalid set of parameters provided. Ensure Red, Green and Blue colour values within 0-255 range."
+                        },
+                    )
+
+            elif requestURL.count("ledon") != 0:
+                if (
+                    configData["mode"] == 2
+                    and not clientAddr[0] in configData["slave_nodes"]
+                ):
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "This node is setup as a Slave node you can't change controllers state directly.",
+                        },
+                        500,
+                    )
+                else:
+                    currentPattern = "default"
+                    updateState()
+                    if configData["mode"] == 1:
+                        slaveList = configData["slave_nodes"]
+                        if len(slaveList) <= 0:
+                            replyJson(
+                                client,
+                                {
+                                    "Warning": "Controller setup as a master with no nodes configured?"
+                                },
+                            )
                         else:
-                            replyJson(client, {"Message" : "Failed", "Error" : "Provided data name abnormally or incorrectly provided Ensure naming is correct." }, 500)
-                            
-                elif requestURL.count("shutdown") != 0:
-                    print("Shutting down.")
-                    webSocket.close()
-                    shuttingDown = True
+                            errorList = distributeModeUpdate(slaveList)
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Updates Distrubuted...",
+                                    "Errors:": errorList,
+                                },
+                            )
+                    else:
+                        replyJson(
+                            client,
+                            {"Message": "Started...", "CurrentPattern": currentPattern},
+                        )
+
+            elif requestURL.count("ledoff") != 0:
+                if (
+                    configData["mode"] == 2
+                    and not clientAddr[0] in configData["slave_nodes"]
+                ):
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "This node is setup as a Slave node you can't change controllers state directly.",
+                        },
+                        500,
+                    )
+                else:
+                    currentPattern = "off"
+                    updateState()
+                    if configData["mode"] == 1:
+                        slaveList = configData["slave_nodes"]
+                        if len(slaveList) <= 0:
+                            replyJson(
+                                client,
+                                {
+                                    "Warning": "Controller setup as a master with no nodes configured?"
+                                },
+                            )
+                        else:
+                            errorList = distributeModeUpdate(slaveList)
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Updates Distrubuted...",
+                                    "Errors:": errorList,
+                                },
+                            )
+                    else:
+                        replyJson(
+                            client,
+                            {"Message": "Started...", "CurrentPattern": currentPattern},
+                        )
+
+            elif requestURL.count("configstatus") != 0:
+                data = {"Message": "Config Data"}
+                tempData = configData.copy()
+                tempData.pop("net_password")
+                tempData.pop("auth_code")
+                data.update(tempData)
+                replyJson(client, data)
+
+            elif requestURL.count("status") != 0:
+                replyJson(
+                    client,
+                    {
+                        "Message": "My Status",
+                        "CurrentPattern": currentPattern,
+                        "IP": webAddr,
+                        "WifiName": netSSID,
+                        "LEDCount": LEDCOUNT,
+                        "Version": VERSION,
+                    },
+                )
+
+            elif requestURL.count("configset") != 0:
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Too many parameters or no parameters given.",
+                        },
+                        500,
+                    )
+                else:
+                    param = paramsList[0]
+                    if param[0] in [s.lower() for s in configData.keys()]:
+                        valueType = type(configData[param[0]])
+                        configData[param[0]] = valueType(param[1])
+                        replyJson(
+                            client,
+                            {"Message": "Updated Value", f"{param[0]}": f"{param[1]}"},
+                        )
+                        updateState()
+                        saveConfig()
+                    else:
+                        replyJson(
+                            client,
+                            {
+                                "Message": "Error",
+                                "Error": "The given name doesn't exist?",
+                            },
+                            500,
+                        )
+
+            elif requestURL.count("slavelist") != 0:
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Too many parameters or no parameters given.",
+                        },
+                        500,
+                    )
+                else:
+                    param = paramsList[0]
+                    if param[0] == "add":
+                        filterIP = param[1].replace("_", ".")
+                        slaveList = configData["slave_nodes"]
+                        if filterIP in slaveList:
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Error",
+                                    "Error": "Can't add an already exist node / IP to the list.",
+                                },
+                                500,
+                            )
+                        else:
+                            slaveList.append(filterIP)
+                            configData["slave_nodes"] = slaveList
+                            saveConfig()
+                            replyJson(
+                                client,
+                                {"Message": "Added new Node", "Node IP": f"{filterIP}"},
+                            )
+
+                    elif param[0] == "remove":
+                        filterIP = param[1].replace("_", ".")
+                        slaveList = configData["slave_nodes"]
+                        if filterIP in slaveList:
+                            slaveList.remove(filterIP)
+                            configData["slave_nodes"] = slaveList
+                            saveConfig()
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Removed the requested Node",
+                                    "Node IP": f"{filterIP}",
+                                },
+                            )
+                        else:
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Error",
+                                    "Error": "Can't remove a node / IP thats no in the list.",
+                                },
+                                500,
+                            )
+                    else:
+                        replyJson(
+                            client,
+                            {
+                                "Message": "Error",
+                                "Error": "Provided command is invalid? Use add to add new nodes or remove to remove a node from the list.",
+                            },
+                            500,
+                        )
+
+            elif requestURL.count("setmaster") != 0:
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Too many parameters or no parameters given.",
+                        },
+                        500,
+                    )
+                else:
+                    param = paramsList[0]
+                    if param[0] == "hostname":
+                        filterIP = param[1].replace("_", ".")
+                        configData["master_to"] = filterIP
+                        saveConfig()
+                        replyJson(
+                            client,
+                            {
+                                "Message": "Node master has been updated...",
+                                "IP": f"{filterIP}",
+                                "Note": "For this to truly work you must update the mode aswell.",
+                            },
+                        )
+
+            elif requestURL.count("resetconfig") != 0:
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Too many parameters or no parameters given.",
+                            "Note": "The auth code must be provided for this action.",
+                        },
+                        500,
+                    )
+                else:
+                    param = paramsList[0]
+                    if (
+                        param[0].lower() == "auth_code"
+                        and param[1].lower() == configData["auth_code"]
+                    ):
+                        configData = configDefaults
+                        saveConfig()
+                        replyJson(client, {"Message": "Config completely reset."})
+
+            elif requestURL.count("mode") != 0:
+                masterNodeIP = configData["master_to"]
+                if configData["mode"] == 2 and not clientAddr[0] == masterNodeIP:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Node is set in slave mode send commands to the master node.",
+                            "MasterNodeIP": masterNodeIP,
+                        },
+                        500,
+                    )
                     continue
-                    
-            gc.collect()
-            
-    except Exception as err:#TODO Remove this once i find the cause of the crashing...
-        print("Thrown Exception as :", err)
-        logCrash(err, "This is a crash caused within the socket handling.")
+
+                if paramLength <= 0 or paramLength >= 2:
+                    replyJson(
+                        client,
+                        {
+                            "Message": "Error",
+                            "Error": "Too many parameters or no parameters given.",
+                        },
+                        500,
+                    )
+                else:
+                    param = paramsList[0]
+                    if param[0] == "pattern":
+                        if param[1] in patternList:
+                            currentPattern = param[1]
+                            updateState()
+
+                            if configData["mode"] == 1:
+                                slaveList = configData["slave_nodes"]
+                                if len(slaveList) <= 0:
+                                    replyJson(
+                                        client,
+                                        {
+                                            "Warning": "Controller setup as a master with no nodes configured?"
+                                        },
+                                    )
+                                else:
+                                    errorList = distributeModeUpdate(slaveList)
+
+                                    replyJson(
+                                        client,
+                                        {
+                                            "Message": "Updates Distrubuted...",
+                                            "Errors:": errorList,
+                                        },
+                                    )
+                            else:
+                                replyJson(
+                                    client,
+                                    {
+                                        "Message": "Updated Mode",
+                                        "CurrentPattern": currentPattern,
+                                    },
+                                )
+                        else:
+                            replyJson(
+                                client,
+                                {
+                                    "Message": "Error",
+                                    "Error": "Provided pattern isn't within the list?",
+                                },
+                                500,
+                            )
+                    else:
+                        replyJson(
+                            client,
+                            {
+                                "Message": "Failed",
+                                "Error": "Provided data name abnormally or incorrectly provided Ensure naming is correct.",
+                            },
+                            500,
+                        )
+
+            elif requestURL.count("shutdown") != 0:
+                print("Shutting down.")
+                webSocket.close()
+                shuttingDown = True
+                continue
+
+        collect()
+
 
 except KeyboardInterrupt:
     print("Interrupt detected. Stopping...")
@@ -885,9 +1117,10 @@ except KeyboardInterrupt:
 
 except OSError as err:
     print("OS Error Thrown: ", err)
-    logCrash(err, "An OS Error...")
+
 finally:
     print("Clean up...")
     webSocket.close()
-            
+
 print("Bye.")
+
