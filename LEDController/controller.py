@@ -1,4 +1,4 @@
-from machine import Pin, reset, RTC
+from machine import Pin, reset, RTC, deepsleep
 from gc import collect, mem_free
 from random import randint, choice
 from time import sleep, time
@@ -153,7 +153,7 @@ def timeSync(netWlan):
 def timeToMillis(timeTuple):
     hours = timeTuple[0] * 3600000
     minutes = timeTuple[1] * 60000
-    seconds = timTuple[2] * 1000
+    seconds = timeTuple[2] * 1000
     return int(hours + minutes + seconds)
 
 
@@ -164,13 +164,13 @@ def checkForSleep():
 
     now = rtc.datetime()
     sleepTime = configData["deep_sleep_start"]
-    if now[4] == sleepTime[0] and now[5] == sleepTime[1] and new[6] == sleepTime[2]:
-        wakeTime = configData["deep_seep_wake"]
-        sleepDuration = timeToMillis(wakeTime) - timeToMillis(sleepTime)
+    if now[4] == sleepTime[0] and now[5] == sleepTime[1] and now[6] == sleepTime[2]:
+        wakeTime = timeToMillis(configData["deep_sleep_wake"])
+        sleepDuration = wakeTime - timeToMillis(sleepTime)
         currentPattern = "off"
-        print("Device sleeping for {wakeTime}ms {wakeTime // 60000}minutes")
+        print(f"Device sleeping for {sleepDuration}ms {sleepDuration // 60000}minutes")
         sleep(5)
-        deepsleep(wakeTime)
+        deepsleep(sleepDuration)
 
 
 # Self Updating Section
@@ -468,6 +468,7 @@ def ledWorker():
     hue_step_per_led = 1536 // LEDCOUNT
 
     while not shuttingDown:
+        checkForSleep()
         if currentPattern in fixedColourDict.keys():
             applyColour(neoPix, False, fixedColourDict[currentPattern])
 
