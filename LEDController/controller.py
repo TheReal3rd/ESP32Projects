@@ -149,15 +149,16 @@ def timeSync(netWlan):
     except Exception as es:
         print(f"Failed RTC sync. Error: {es}")
 
-
-def timeToMillis(timeTuple):
-    hours = timeTuple[0] * 3600000
-    minutes = timeTuple[1] * 60000
-    seconds = timeTuple[2] * 1000
-    return int(hours + minutes + seconds)
-
-
 def checkForSleep():
+    def sleepDuration(sleep, wake):
+        sleepSeconds = sleep[0] * 3600 + sleep[1] * 60 + sleep[2]
+        wakeSeconds = wake[0] * 3600 + wake[1] * 60 + wake[2]
+
+        if wakeSeconds < sleepSeconds:
+            wakeSeconds += 24 * 3600
+
+        return (wakeSeconds - sleepSeconds) * 1000
+    
     global rtc, configData
     if not configData["auto_sleep"]:
         return
@@ -165,8 +166,8 @@ def checkForSleep():
     now = rtc.datetime()
     sleepTime = configData["deep_sleep_start"]
     if now[4] == sleepTime[0] and now[5] == sleepTime[1] and now[6] == sleepTime[2]:
-        wakeTime = timeToMillis(configData["deep_sleep_wake"])
-        sleepDuration = wakeTime - timeToMillis(sleepTime)
+        wakeTime = configData["deep_sleep_wake"]
+        sleepDuration = sleepDuration(wakeTime, sleepTime) #wakeTime - timeToMillis(sleepTime)
         currentPattern = "off"
         print(f"Device sleeping for {sleepDuration}ms {sleepDuration // 60000}minutes")
         sleep(5)
