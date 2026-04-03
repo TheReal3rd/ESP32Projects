@@ -115,6 +115,8 @@ try:
                 requestURL = paramSplit[0]
                 for param in paramSplit[1].split("&"):
                     valueSplit = param.split("=")
+                    if len(valueSplit) <= 1:
+                        continue
                     paramsList.update( { sCleanup(str(valueSplit[0].lower())) : sCleanup(str(valueSplit[1].lower()))} )
                 paramLength = len(paramsList)
           
