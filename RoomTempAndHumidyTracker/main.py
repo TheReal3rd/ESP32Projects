@@ -9,13 +9,24 @@ import urequests
 #Data entry
 ROOM_NAME = "BedRoom"
 EXTRA_INFO = "No Extra Information"
-
+MEASUREMENT_AMOUNT = 3
+MEASUREMENT_WAIT = 2
 SLEEP_DURATION = 3600000
 
 ACTIVE_LED = Pin(21, Pin.OUT)
 
 #Sensors
 sensor = dht.DHT11(Pin(22))
+
+def takeMeasurements():
+    sensor.measure()
+    time.sleep(0.5)
+    temperature = sensor.temperature()
+    humidity = sensor.humidity()
+    currentTime = rtc.datetime()
+    print(f"Detected measurements Temperature: {temperature} Humidity: {humidity} Time: {currentTime}")
+    return (temperature, humidity, currentTime)
+
 
 #Networking
 SSID = "aaa"
@@ -50,22 +61,26 @@ if wifi.isconnected():
         print(f"Failed RTC sync. Error: {es}")
 
 try:
-    time.sleep(2)
-    sensor.measure()
-    time.sleep(0.5)
-    temperature = sensor.temperature()
-    humidity = sensor.humidity()
-    currentTime = rtc.datetime()
-    print(f"Detected measurements Temperature: {temperature} Humidity: {humidity} Time: {currentTime}")
+    ACTIVE_LED.on()
+
+    temperatureArr = []
+    humidityArr = []
+    currentTimeArr = []
+    for x in range(MEASUREMENT_AMOUNT):
+        temperature, humidity, currentTime = takeMeasurements()
+        temperatureArr.append(temperature)
+        humidityArr.append(humidity)
+        currentTimeArr.append(currentTime)
+        time.sleep(MEASUREMENT_WAIT)
+        
     data = {
         "name"     : ROOM_NAME,
         "extra"    : EXTRA_INFO,
-        "temp"     : temperature,
-        "humidity" : humidity,
-        "timeDate" : currentTime
+        "temp"     : temperatureArr,
+        "humidity" : humidityArr,
+        "timeDate" : currentTimeArr
     }
-    ACTIVE_LED.on()
-    
+ 
     try:
         response = urequests.post(TARGET_ADDRESS, json=data, headers=HEADERS)
         if response.status_code == 200:
