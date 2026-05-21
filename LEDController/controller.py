@@ -149,7 +149,9 @@ def timeSync(netWlan):
     except Exception as es:
         print(f"Failed RTC sync. Error: {es}")
 
-def checkForSleep():
+def checkForSleep(pix):
+    global LEDCOUNT
+    
     def sleepDuration(sleep, wake):
         sleepSeconds = sleep[0] * 3600 + sleep[1] * 60 + sleep[2]
         wakeSeconds = wake[0] * 3600 + wake[1] * 60 + wake[2]
@@ -165,11 +167,17 @@ def checkForSleep():
 
     now = rtc.datetime()
     sleepTime = configData["deep_sleep_start"]
-    if now[4] == sleepTime[0] and now[5] == sleepTime[1] and now[6] == sleepTime[2]:
+    sleepHours, sleepMinutes, sleepSeconds = sleepTime
+    if now[4] == sleepHours and now[5] == sleepMinutes and now[6] == sleepSeconds:
         wakeTime = configData["deep_sleep_wake"]
-        sleepDuration = sleepDuration(wakeTime, sleepTime) #wakeTime - timeToMillis(sleepTime)
+        sleepDuration = sleepDuration(wakeTime, sleepTime)
         currentPattern = "off"
-        print(f"Device sleeping for {sleepDuration}ms {sleepDuration // 60000}minutes")
+        
+        for i in range(LEDCOUNT):
+            pix[i] = (0,0,0)
+        pix.write()
+        
+        print(f"Device sleeping for {sleepDuration}ms {sleepDuration // 60000} minutes")
         sleep(5)
         deepsleep(sleepDuration)
 
@@ -469,7 +477,7 @@ def ledWorker():
     hue_step_per_led = 1536 // LEDCOUNT
 
     while not shuttingDown:
-        checkForSleep()
+        checkForSleep(neoPix)
         if currentPattern in fixedColourDict.keys():
             applyColour(neoPix, False, fixedColourDict[currentPattern])
 
@@ -520,18 +528,19 @@ netWlan.connect(netSSID, netPassword)
 
 timeSync(netWlan)
 rtc = RTC()
-print("Current time and date: {rtc.datetime()}")
+print(f"Current time and date: {rtc.datetime()}")
 
 deviceIP = None
 
-netTries = 10
-while netTries != 0:
-    if netWlan.status() < 0 or netWlan.status() >= 3:
-        print("Connection Successful...")
-        break
-    netTries -= 1
-    print("Failed to connect retrying...")
-    time.sleep(1)
+if not netWlan.isconnected():
+    netTries = 10
+    while netTries != 0:
+        if netWlan.status() < 0 or netWlan.status() >= 3:
+            print("Connection Successful...")
+            break
+        netTries -= 1
+        print("Failed to connect retrying...")
+        time.sleep(1)
 
 netInfo = netWlan.ifconfig()
 deviceIP = netInfo[0]
