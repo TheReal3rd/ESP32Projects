@@ -32,7 +32,7 @@ def takeMeasurements():
 SSID = "aaa"
 PASSWORD = "aaaa"
 HEADERS = {"Content-Type": "application/json"}
-TARGET_ADDRESS = "http://192.168.0.14:3000"
+TARGET_ADDRESS = "http://192.168.0.14:3000/entry"
 
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
@@ -63,33 +63,27 @@ if wifi.isconnected():
 try:
     ACTIVE_LED.on()
 
-    temperatureArr = []
-    humidityArr = []
-    currentTimeArr = []
     for x in range(MEASUREMENT_AMOUNT):
         temperature, humidity, currentTime = takeMeasurements()
-        temperatureArr.append(temperature)
-        humidityArr.append(humidity)
-        currentTimeArr.append(currentTime)
         time.sleep(MEASUREMENT_WAIT)
         
-    data = {
-        "name"     : ROOM_NAME,
-        "extra"    : EXTRA_INFO,
-        "temp"     : temperatureArr,
-        "humidity" : humidityArr,
-        "timeDate" : currentTimeArr
-    }
- 
-    try:
-        response = urequests.post(TARGET_ADDRESS, json=data, headers=HEADERS)
-        if response.status_code == 200:
-            print("Success:", response.json())
-        else:
-            print("Error:", response.status_code)
-        response.close()
-    except Exception:
-        print("Error fix later")
+        data = {
+            "name"     : ROOM_NAME,
+            "extra"    : EXTRA_INFO,
+            "temp"     : temperature,
+            "humidity" : humidity,
+            "timeDate" : currentTime
+        }
+     
+        try:
+            response = urequests.post(TARGET_ADDRESS, json=data, headers=HEADERS)
+            if response.status_code == 200:
+                print("Success:", response.json())
+            else:
+                print("Error:", response.status_code)
+            response.close()
+        except Exception:
+            print("Error fix later")
     
     print("\n\nNow waiting 10 seconds Before deepsleep...")
     time.sleep(10)
