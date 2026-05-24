@@ -8,7 +8,6 @@ import urequests
 
 #Data entry
 ROOM_NAME = "BedRoom"
-EXTRA_INFO = "No Extra Information"
 MEASUREMENT_AMOUNT = 3
 MEASUREMENT_WAIT = 2
 SLEEP_DURATION = 3600000
@@ -69,7 +68,6 @@ try:
         
         data = {
             "name"     : ROOM_NAME,
-            "extra"    : EXTRA_INFO,
             "temp"     : temperature,
             "humidity" : humidity,
             "timeDate" : currentTime
